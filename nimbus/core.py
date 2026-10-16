@@ -12,6 +12,7 @@ from collections import deque
 from typing import Callable
 
 
+from .i18n import tr
 from . import paths, winsys
 from .config_builder import TUN_GATEWAY, Built, free_port  # noqa: F401  (free_port: re-exported)
 
@@ -110,10 +111,10 @@ class XrayCore:
             raise CoreError("already running")
         for ib in built.config["inbounds"]:
             if ib.get("port") and port_in_use(ib["port"]):
-                raise CoreError(f"Порт {ib['port']} занят другой программой (другой VPN-клиент?)")
+                raise CoreError(tr("Порт {port} занят другой программой (другой VPN-клиент?)", port=ib['port']))
         if built.tun and _address_assigned(TUN_GATEWAY):
-            raise CoreError(f"Адрес {TUN_GATEWAY} уже занят другим TUN-адаптером: закройте другой "
-                            f"VPN-клиент (Throne, sing-box, v2rayN…) и подключитесь снова")
+            raise CoreError(tr("Адрес {ip} уже занят другим TUN-адаптером: закройте другой VPN-клиент "
+                               "(Throne, sing-box, v2rayN…) и подключитесь снова", ip=TUN_GATEWAY))
 
         cfg_path = paths.RUN_DIR / "config.json"
         cfg_path.write_text(json.dumps(built.config, ensure_ascii=False, indent=1), "utf-8")
@@ -140,7 +141,7 @@ class XrayCore:
         self._raise_if_dead(self.proc, self.tail, "Xray")
         if bridge and not port_in_use(bridge):
             self.stop(restore_proxy=False)
-            raise CoreError("Xray не открыл порт для TUN за 5 секунд")
+            raise CoreError(tr("Xray не открыл порт для TUN за 5 секунд"))
 
         if built.tun:
             # sing-box takes the adapter, routes and DNS. We're only "connected" once the adapter
@@ -160,7 +161,7 @@ class XrayCore:
             self._raise_if_dead(self.proc, self.tail, "Xray")
             if not _address_assigned(TUN_GATEWAY):
                 self.stop(restore_proxy=False)
-                raise CoreError("TUN-адаптер не поднялся за 25 секунд")
+                raise CoreError(tr("TUN-адаптер не поднялся за 25 секунд"))
 
         # Proxy mode points the system proxy at us. TUN mode switches it off: browsers would
         # otherwise keep using whatever proxy is set (e.g. a dead one from another client)
@@ -205,7 +206,7 @@ class XrayCore:
         time.sleep(0.2)
         msg = next((l for l in reversed(tail) if "fail" in l.lower() or "error" in l.lower()
                     or "fatal" in l.lower()),
-                   tail[-1] if tail else f"{name} завершился сразу после запуска")
+                   tail[-1] if tail else tr("{name} завершился сразу после запуска", name=name))
         self.stop(restore_proxy=False)
         raise CoreError(msg)
 

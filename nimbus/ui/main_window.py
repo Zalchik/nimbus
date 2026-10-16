@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from .. import i18n
+from ..i18n import tr
 from .. import deeplink, paths, qr, share, winsys
 from ..config_builder import active_preset, provider_routing
 from ..controller import Controller
@@ -28,21 +30,21 @@ from .share_ui import QrDialog, save_text
 from .widgets import Anim, ElidedLabel, IconButton, PowerButton, Segmented, SpeedGraph, Spinner, ThemeSwitch, \
     Toaster, caption
 
-STATUS_TEXT = {"disconnected": "Не подключено", "connecting": "Подключение",
-               "connected": "Подключено", "disconnecting": "Отключение"}
+STATUS_TEXT = {"disconnected": tr("Не подключено"), "connecting": tr("Подключение"),
+               "connected": tr("Подключено"), "disconnecting": tr("Отключение")}
 MANUAL = "__manual__"
-SORT_MODES = [("source", "Порядок", "Как в подписке у провайдера"),
-              ("ping", "Пинг", "Внутри каждой подписки — сначала самые быстрые"),
-              ("name", "А–Я", "Внутри каждой подписки — по алфавиту, без учёта эмодзи")]
+SORT_MODES = [("source", tr("Порядок"), tr("Как в подписке у провайдера")),
+              ("ping", tr("Пинг"), tr("Внутри каждой подписки — сначала самые быстрые")),
+              ("name", tr("А–Я"), tr("Внутри каждой подписки — по алфавиту, без учёта эмодзи"))]
 PROTO_NAMES = {"vless": "VLESS", "vmess": "VMess", "trojan": "Trojan", "ss": "Shadowsocks",
                "shadowsocks": "Shadowsocks", "hysteria": "Hysteria2", "hysteria2": "Hysteria2", "hy2": "Hysteria2",
                "socks": "SOCKS5", "wireguard": "WireGuard", "wg": "WireGuard", "http": "HTTP"}
-CRYPT_TEXT = ("Это зашифрованная ссылка Happ (happ://crypt…): защищённый формат Happ, Nimbus такие ссылки "
-              "не расшифровывает. Попросите у VPN-провайдера обычную ссылку на подписку — она начинается "
-              "с https://. Её можно вставить в Nimbus кнопкой «Добавить» или клавишами Ctrl+V.")
+CRYPT_TEXT = (tr("Это зашифрованная ссылка Happ (happ://crypt…): защищённый формат Happ, Nimbus такие ссылки "
+                 "не расшифровывает. Попросите у VPN-провайдера обычную ссылку на подписку — она начинается "
+                 "с https://. Её можно вставить в Nimbus кнопкой «Добавить» или клавишами Ctrl+V."))
 ROUTE_TIPS = {
-    True: "Умная* — маршруты из вашей подписки: какие сайты открываются без VPN, решает VPN-провайдер",
-    False: "Весь трафик, включая российские сайты, идёт через VPN",
+    True: tr("Умная* — маршруты из вашей подписки: какие сайты открываются без VPN, решает VPN-провайдер"),
+    False: tr("Весь трафик, включая российские сайты, идёт через VPN"),
 }
 
 
@@ -51,27 +53,29 @@ def route_hint(info: dict | None, provider: bool, preset: dict | None = None, tu
     if preset:
         what = describe(preset)
         if preset.get("mode", "bypass") == "vpn":
-            text = f"Пресет «{preset['name']}»: через VPN идут только {what}, всё остальное — напрямую."
+            text = tr("Пресет «{name}»: через VPN идут только {what}, всё остальное — напрямую.",
+                      name=preset['name'], what=what)
         else:
-            text = f"Пресет «{preset['name']}»: {what} — без VPN, остальное через VPN."
+            text = tr("Пресет «{name}»: {what} — без VPN, остальное через VPN.", name=preset['name'], what=what)
             if preset.get("provider", True) and info is not None:
-                text += " Правила провайдера* тоже действуют."
+                text += tr(" Правила провайдера* тоже действуют.")
         if preset.get("apps") and not tun:
-            text += " Программы без поддержки системного прокси учитываются только в режиме TUN."
+            text += tr(" Программы без поддержки системного прокси учитываются только в режиме TUN.")
         return text
     if info is None and balancer:
-        return ("Весь трафик идёт через VPN: в балансировщике серверы разных подписок, поэтому правила "
-                "провайдера не применяются." + (" Свои правила — в пресетах." if presets else ""))
+        return (tr("Весь трафик идёт через VPN: в балансировщике серверы разных подписок, поэтому правила "
+                   "провайдера не применяются.") + (tr(" Свои правила — в пресетах.") if presets else ""))
     if info is None:
         if presets:
-            return ("Весь трафик идёт через VPN: в этом конфиге VPN-провайдер не задал правил маршрутизации. "
-                    "Свои правила — в пресетах.")
-        return ("Весь трафик идёт через VPN: в этом конфиге VPN-провайдер не задал правил маршрутизации, "
-                "поэтому выбирать нечего.")
+            return (tr("Весь трафик идёт через VPN: в этом конфиге VPN-провайдер не задал правил маршрутизации. "
+                       "Свои правила — в пресетах."))
+        return (tr("Весь трафик идёт через VPN: в этом конфиге VPN-провайдер не задал правил маршрутизации, "
+                   "поэтому выбирать нечего."))
     if not provider:
-        return "Все сайты, включая российские, идут через VPN. Правила из подписки не используются."
-    what = "российские сайты открываются без VPN" if info["ru"] else "часть сайтов открывается без VPN"
-    return f"* Правила маршрутизации задаёт ваш VPN-провайдер в подписке: {what}, остальные — через VPN."
+        return tr("Все сайты, включая российские, идут через VPN. Правила из подписки не используются.")
+    what = tr("российские сайты открываются без VPN") if info["ru"] else tr("часть сайтов открывается без VPN")
+    return tr("* Правила маршрутизации задаёт ваш VPN-провайдер в подписке: {what}, остальные — через VPN.",
+              what=what)
 
 def gap(layout: QVBoxLayout, h: int) -> None:
     """Vertical space of `h` px that gives way when the window is too short for everything."""
@@ -82,7 +86,7 @@ def proto_label(s: Server) -> str:
     proto = s.protocol
     if proto.startswith("balancer"):
         n = int(proto.split("·")[-1].strip() or 0)
-        return f"Авто · {n} {plural(n, 'узел', 'узла', 'узлов')}"
+        return tr("Авто · {n} {nodes}", n=n, nodes=plural(n, "узел", "узла", "узлов"))
     return PROTO_NAMES.get(proto, proto.upper())
 
 
@@ -100,13 +104,13 @@ class ServerChip(QWidget):
 
     def set_server(self, srv: Server | None, balancer: bool = False, node: str = "") -> None:
         """balancer: a bolt instead of the flag; node: the server it goes through now."""
-        self.code, self.name = flags.split(srv.name) if srv else (None, "Сервер не выбран")
+        self.code, self.name = flags.split(srv.name) if srv else (None, tr("Сервер не выбран"))
         self.badge = "bolt" if balancer and srv else ""
         if self.badge:
             self.code, self.name = None, srv.name + (f"  →  {flags.split(node)[1]}" if node else "")
         tip = srv.name if srv else ""
         if node:
-            tip += f"\nСейчас самый быстрый: {node}"
+            tip += tr("\nСейчас самый быстрый: {node}", node=node)
         self.setToolTip(tip)
         self.update()
 
@@ -150,16 +154,16 @@ class ExitIpLabel(QWidget):
         self.status, self.ip, self.code = "", "", None
         self.setFixedHeight(24)
         self._font = theme.font(9, QFont.Medium, tabular=True)
-        self.button = IconButton("refresh", "Проверить IP ещё раз", size=22)
+        self.button = IconButton("refresh", tr("Проверить IP ещё раз"), size=22)
         self.button.setParent(self)
         self.button.clicked.connect(self.refresh)
         self.button.hide()
 
     def _text(self) -> str:
         if self.status == "fail" and not self.ip:
-            return "IP не определён"
+            return tr("IP не определён")
         if self.status == "checking" and not self.ip:
-            return "Определяем IP…"
+            return tr("Определяем IP…")
         return self.ip
 
     def _layout(self) -> tuple[float, float, float]:
@@ -174,9 +178,9 @@ class ExitIpLabel(QWidget):
         self.button.setVisible(bool(status))
         self.button.set_spinning(status == "checking")
         self.button.setEnabled(status != "checking")
-        tip = "Ваш IP через VPN — нажмите, чтобы скопировать" if ip else ""
+        tip = tr("Ваш IP через VPN — нажмите, чтобы скопировать") if ip else ""
         if status == "fail" and ip:
-            tip = "Не удалось проверить IP заново — показан последний известный"
+            tip = tr("Не удалось проверить IP заново — показан последний известный")
         self.setToolTip(tip)
         self.resizeEvent(None)
         self.update()
@@ -208,6 +212,7 @@ class ExitIpLabel(QWidget):
 
 class MainWindow(QMainWindow):
     quit_requested = Signal()
+    restart_requested = Signal()         # the interface language changed
 
     def __init__(self, ctl: Controller):
         super().__init__()
@@ -310,7 +315,8 @@ class MainWindow(QMainWindow):
         stats = QHBoxLayout()
         stats.setSpacing(18)
         self.down_val, self.up_val = QLabel(), QLabel()
-        for title, lbl, glyph in (("Загрузка", self.down_val, "arrow_down"), ("Отдача", self.up_val, "arrow_up")):
+        for title, lbl, glyph in ((tr("Загрузка"), self.down_val, "arrow_down"),
+                                  (tr("Отдача"), self.up_val, "arrow_up")):
             col = QVBoxLayout()
             col.setSpacing(4)
             col.addWidget(caption(title))
@@ -327,27 +333,28 @@ class MainWindow(QMainWindow):
         v.addSpacing(14)
         gap(v, 10)
 
-        v.addWidget(caption("Режим"))
+        v.addWidget(caption(tr("Режим")))
         v.addSpacing(8)
         self.mode_seg = Segmented([
-            ("proxy", "Системный прокси", "Браузеры и программы, которые используют системный прокси. "
-                                          "Без прав администратора"),
-            ("tun", "TUN", "Весь трафик компьютера, включая игры. Нужны права администратора")])
+            ("proxy", tr("Системный прокси"), tr("Браузеры и программы, которые используют системный прокси. "
+                                                 "Без прав администратора")),
+            ("tun", "TUN", tr("Весь трафик компьютера, включая игры. Нужны права администратора"))])
         self.mode_seg.changed.connect(self._mode_changed)
         v.addWidget(self.mode_seg)
         v.addSpacing(10)
         gap(v, 6)
-        v.addWidget(caption("Маршрутизация"))
+        v.addWidget(caption(tr("Маршрутизация")))
         v.addSpacing(8)
-        self.route_seg = Segmented([(True, "Умная*", ROUTE_TIPS[True]), (False, "Весь трафик", ROUTE_TIPS[False])])
+        self.route_seg = Segmented([(True, tr("Умная*"), ROUTE_TIPS[True]),
+                                    (False, tr("Весь трафик"), ROUTE_TIPS[False])])
         self.route_seg.changed.connect(self._route_changed)
         self.route_seg.reselected.connect(lambda key: key == "preset" and self._preset_menu())
-        self.route_fixed = QLabel("Весь трафик через VPN", alignment=Qt.AlignCenter)
+        self.route_fixed = QLabel(tr("Весь трафик через VPN"), alignment=Qt.AlignCenter)
         self.route_fixed.setFixedHeight(34)
         self.route_fixed.setFont(theme.font(8.8, QFont.DemiBold))
         theme.styled(self.route_fixed, lambda: f"color: {theme.TEXT_2}; border: 1px solid {theme.BORDER}; "
                                                f"border-radius: 17px; background: {theme.SURFACE};")
-        add_preset = IconButton("plus", "Пресеты маршрутизации", size=24)
+        add_preset = IconButton("plus", tr("Пресеты маршрутизации"), size=24)
         add_preset.setFixedWidth(16)  # narrow, so the labels of the pill next to it fit
         add_preset.clicked.connect(lambda: self.show_settings("presets"))
         route_row = QHBoxLayout()
@@ -388,13 +395,13 @@ class MainWindow(QMainWindow):
         self.busy_label.hide()
         top.addWidget(self.spinner)
         top.addWidget(self.busy_label)
-        self.update_btn = IconButton("refresh", "Обновить подписки  (F5)")
+        self.update_btn = IconButton("refresh", tr("Обновить подписки  (F5)"))
         self.update_btn.clicked.connect(lambda: self.ctl.update_subscriptions())
-        self.ping_btn = IconButton("pulse", "Проверить задержку всех серверов  (Ctrl+P)")
+        self.ping_btn = IconButton("pulse", tr("Проверить задержку всех серверов  (Ctrl+P)"))
         self.ping_btn.clicked.connect(lambda: self._ping())
-        logs = IconButton("logs", "Логи ядра")
+        logs = IconButton("logs", tr("Логи ядра"))
         logs.clicked.connect(self.show_logs)
-        settings = IconButton("gear", "Настройки")
+        settings = IconButton("gear", tr("Настройки"))
         settings.clicked.connect(self.show_settings)
         for b in (self.update_btn, self.ping_btn, logs, settings):
             top.addWidget(b)
@@ -403,22 +410,22 @@ class MainWindow(QMainWindow):
 
         bar = QHBoxLayout()
         bar.setSpacing(10)
-        self.search = QLineEdit(objectName="search", placeholderText="Поиск по серверам")
+        self.search = QLineEdit(objectName="search", placeholderText=tr("Поиск по серверам"))
         search_icon = self.search.addAction(icons.icon("search", theme.MUTED, 16), QLineEdit.LeadingPosition)
         theme.on_change(lambda: search_icon.setIcon(icons.icon("search", theme.MUTED, 16)))
         self.search.setClearButtonEnabled(True)
         self.search.setFixedHeight(38)
         self.search.textChanged.connect(lambda _: self.refresh_servers())
         bar.addWidget(self.search, 1)
-        self.sort_seg = Segmented([(k, t, tip + ". У отдельной группы — правый клик по ней → «Сортировка»")
+        self.sort_seg = Segmented([(k, t, tip + tr(". У отдельной группы — правый клик по ней → «Сортировка»"))
                                    for k, t, tip in SORT_MODES],
                                   self.ctl.settings.sort_mode, stretch=False, height=38)
         self.sort_seg.changed.connect(self._sort_changed)
         bar.addWidget(self.sort_seg)
-        paste = IconButton("paste", "Вставить из буфера  (Ctrl+V)", size=38)
+        paste = IconButton("paste", tr("Вставить из буфера  (Ctrl+V)"), size=38)
         paste.clicked.connect(self.paste_clipboard)
         bar.addWidget(paste)
-        add = IconButton("plus", "Подписка, ссылки vless:// и т.п. или Xray JSON", text="Добавить",
+        add = IconButton("plus", tr("Подписка, ссылки vless:// и т.п. или Xray JSON"), text=tr("Добавить"),
                          primary=True, size=38)
         add.clicked.connect(lambda: self.add_menu(add))
         bar.addWidget(add)
@@ -433,20 +440,20 @@ class MainWindow(QMainWindow):
         self.sel_label = QLabel()
         self.sel_label.setFont(theme.font(9.5, QFont.DemiBold))
         sb.addWidget(self.sel_label)
-        hint = ElidedLabel("Клик — добавить или убрать, Shift+клик — диапазон, Ctrl+A — все", objectName="hint")
+        hint = ElidedLabel(tr("Клик — добавить или убрать, Shift+клик — диапазон, Ctrl+A — все"), objectName="hint")
         hint.setFont(theme.font(8.4))
         sb.addWidget(hint, 1)
-        self.sel_bal = IconButton("bolt", "Добавить выбранные серверы в балансировщик", text="В балансировщик",
+        self.sel_bal = IconButton("bolt", tr("Добавить выбранные серверы в балансировщик"), text=tr("В балансировщик"),
                                   size=34)
         self.sel_bal.clicked.connect(lambda: self._balancer_menu_at(self.sel_bal))
         sb.addWidget(self.sel_bal)
-        self.sel_share = IconButton("share", "Поделиться выбранными", text="Поделиться", size=34)
+        self.sel_share = IconButton("share", tr("Поделиться выбранными"), text=tr("Поделиться"), size=34)
         self.sel_share.clicked.connect(lambda: self._share_marked_at(self.sel_share))
         sb.addWidget(self.sel_share)
-        sel_del = IconButton("trash", "Удалить выбранные  (Delete)", text="Удалить", size=34)
+        sel_del = IconButton("trash", tr("Удалить выбранные  (Delete)"), text=tr("Удалить"), size=34)
         sel_del.clicked.connect(self._remove_marked)
         sb.addWidget(sel_del)
-        sel_clear = IconButton("close", "Снять выделение  (Esc)", size=34)
+        sel_clear = IconButton("close", tr("Снять выделение  (Esc)"), size=34)
         sel_clear.clicked.connect(lambda: self.list.set_marked(set()))
         sb.addWidget(sel_clear)
         self.sel_bar.hide()
@@ -486,13 +493,13 @@ class MainWindow(QMainWindow):
         tun = self.ctl.settings.tunnel_mode == "tun"
         if state == "connected":
             s = int(time.monotonic() - self._connected_at)
-            text = f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}  ·  {'TUN' if tun else 'прокси'}"
+            text = f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}  ·  {'TUN' if tun else tr('прокси')}"
         elif state == "connecting":
-            text = "Поднимаем TUN-адаптер…" if tun else "Запускаем ядро…"
+            text = tr("Поднимаем TUN-адаптер…") if tun else tr("Запускаем ядро…")
         elif state == "disconnecting":
-            text = "Возвращаем настройки сети…"
+            text = tr("Возвращаем настройки сети…")
         else:
-            text = "Нажмите, чтобы подключиться"
+            text = tr("Нажмите, чтобы подключиться")
         self.substatus.setText(text)
 
     def on_speed(self, up: float, down: float) -> None:
@@ -509,7 +516,7 @@ class MainWindow(QMainWindow):
 
     def _copy_exit_ip(self) -> None:
         QGuiApplication.clipboard().setText(self.exit_ip.ip)
-        self.toaster.show(f"IP {self.exit_ip.ip} скопирован")
+        self.toaster.show(tr("IP {ip} скопирован", ip=self.exit_ip.ip))
 
     def on_busy(self, text: str) -> None:
         self.spinner.setVisible(bool(text))
@@ -517,9 +524,9 @@ class MainWindow(QMainWindow):
         self.busy_label.setText(text)
         self.update_btn.setEnabled(not text)
         self.ping_btn.setEnabled(not text)
-        self.update_btn.set_spinning(bool(text) and "подпис" in text.lower())
+        self.update_btn.set_spinning(text in (tr("Обновление подписок…"), tr("Загрузка подписки…")))
         self.list.set_busy(bool(text))
-        if text.startswith("Проверка задержки"):
+        if text == tr("Проверка задержки…"):
             self.list.set_pinging(self._ping_ids)
         elif not text:
             self.list.set_pinging(set())
@@ -547,13 +554,13 @@ class MainWindow(QMainWindow):
         info, preset, key = self._route_state()
         options = []
         if info is not None:
-            options.append((True, "Умная*", ROUTE_TIPS[True]))
-        options.append((False, "Весь трафик", ROUTE_TIPS[False]))
+            options.append((True, tr("Умная*"), ROUTE_TIPS[True]))
+        options.append((False, tr("Весь трафик"), ROUTE_TIPS[False]))
         presets = s.route_presets
         if presets:
             many = len(presets) > 1
-            label = preset["name"] if preset else (presets[0]["name"] if not many else "Пресеты")
-            tip = "Ваши пресеты маршрутизации" + (" — нажмите, чтобы выбрать" if many else "")
+            label = preset["name"] if preset else (presets[0]["name"] if not many else tr("Пресеты"))
+            tip = tr("Ваши пресеты маршрутизации") + (tr(" — нажмите, чтобы выбрать") if many else "")
             options.append(("preset", label, tip, many))
         old = self.route_seg.current
         self.route_seg.set_options(options, key)
@@ -596,7 +603,7 @@ class MainWindow(QMainWindow):
             act.setCheckable(True)
             act.setChecked(p["id"] == s.route_preset)
         menu.addSeparator()
-        menu.addAction(icons.icon("gear", theme.TEXT, 16), "Настроить пресеты…",
+        menu.addAction(icons.icon("gear", theme.TEXT, 16), tr("Настроить пресеты…"),
                        lambda: self.show_settings("presets"))
         r = self.route_seg.rect_of("preset")
         chosen = menu.exec(self.route_seg.mapToGlobal(r.bottomLeft().toPoint() + QPoint(0, 6)))
@@ -657,7 +664,7 @@ class MainWindow(QMainWindow):
 
     def _groups(self) -> list[tuple[str, str]]:
         """(list group id, title) of the groups configs can be added to."""
-        return [(MANUAL, "Мои серверы")] + [(g.id, g.name) for g in self.ctl.store.groups]
+        return [(MANUAL, tr("Мои серверы"))] + [(g.id, g.name) for g in self.ctl.store.groups]
 
     def refresh_servers(self, animate: bool = True) -> None:
         """Subscriptions and groups stay in their order; sorting happens inside each of them,
@@ -668,7 +675,7 @@ class MainWindow(QMainWindow):
         groups = [(s.id, s.title, store.servers_of(s.id), s) for s in store.subscriptions]
         manual = store.servers_of("")
         if manual:
-            groups.append((MANUAL, "Мои серверы", manual, None))
+            groups.append((MANUAL, tr("Мои серверы"), manual, None))
         groups += [(g.id, g.name, store.servers_of(g.id), None) for g in store.groups]
         rows: list[Row] = self._balancer_rows(query)
         for gid, title, servers, sub in groups:
@@ -687,22 +694,22 @@ class MainWindow(QMainWindow):
             if sub:
                 info = self._sub_info(sub) if not query else None
             elif not servers:
-                info = {"announce": "Группа пуста. Добавьте в неё конфиги текстом или файлом: кнопкой «+» справа "
-                                    "от названия группы, правым кликом по группе или кнопкой ниже.",
-                        "links": [("Добавить конфиги", f"action:add:{gid}")]}
+                info = {"announce": tr("Группа пуста. Добавьте в неё конфиги текстом или файлом: кнопкой «+» справа "
+                                       "от названия группы, правым кликом по группе или кнопкой ниже."),
+                        "links": [(tr("Добавить конфиги"), f"action:add:{gid}")]}
             else:
                 info = None
             if info:
                 rows.append(Row("info", "i:" + gid, gid=gid, info=info))
             rows += [self._server_row(s) for s in shown]
-        self.list.empty_title = "Ничего не найдено" if query and store.servers else "Серверов пока нет"
-        self.list.empty_hint = ("Попробуйте другой запрос" if query and store.servers else
-                                "Нажмите «Добавить» или скопируйте ссылку на подписку и нажмите Ctrl+V")
+        self.list.empty_title = tr("Ничего не найдено") if query and store.servers else tr("Серверов пока нет")
+        self.list.empty_hint = (tr("Попробуйте другой запрос") if query and store.servers else
+                                tr("Нажмите «Добавить» или скопируйте ссылку на подписку и нажмите Ctrl+V"))
         self.list.set_rows(rows, self._collapsed, animate)
         self.list.set_selected(self.ctl.settings.selected_server, self.ctl.state == "connected")
         n = len(store.servers)
-        self.count.setText(f'Серверы<span style="color:{theme.FAINT}; font-size:13pt; font-weight:500">'
-                           f'&nbsp;&nbsp;{n}</span>' if n else "Серверы")
+        self.count.setText(tr("Серверы") + (f'<span style="color:{theme.FAINT}; font-size:13pt; font-weight:500">'
+                                             f'&nbsp;&nbsp;{n}</span>' if n else ""))
         sel = self.ctl.settings.selected_server
         self.chip.set_server(self.ctl.selected, store.balancer(sel) is not None,
                              self.ctl.current_node if self.ctl.state == "connected" else "")
@@ -714,16 +721,17 @@ class MainWindow(QMainWindow):
         shown = [b for b in store.balancers if query in b.name.lower()] if query else list(store.balancers)
         if not shown:
             return []
-        rows = [Row("header", "h:" + BALANCERS, gid=BALANCERS, title="Балансировщики", count=len(store.balancers),
+        rows = [Row("header", "h:" + BALANCERS, gid=BALANCERS, title=tr("Балансировщики"), count=len(store.balancers),
                     actions=("ping", "add"))]
         sel, connected = self.ctl.settings.selected_server, self.ctl.state == "connected"
         for b in shown:
             n = len(store.members(b))
-            detail = f"Авто · {n} {plural(n, 'сервер', 'сервера', 'серверов')}" if n else "Нет серверов"
+            detail = (tr("Авто · {n} {servers}", n=n, servers=plural(n, "сервер", "сервера", "серверов")) if n
+                      else tr("Нет серверов"))
             if n and b.mode == "fastest":
-                detail += "  ·  самый быстрый"
+                detail += tr("  ·  самый быстрый")
             if connected and b.id == sel and self.ctl.current_node:
-                detail += f"  ·  сейчас {flags.split(self.ctl.current_node)[1]}"
+                detail += tr("  ·  сейчас {node}", node=flags.split(self.ctl.current_node)[1])
             rows.append(Row("server", b.id, gid=BALANCERS, server=Server(id=b.id, name=b.name, latency=b.latency),
                             badge="bolt", share=False, name=b.name, detail=detail))
         return rows
@@ -734,24 +742,24 @@ class MainWindow(QMainWindow):
         info: dict = {"announce": sub.announce.strip()}
         if sub.expire:
             left = sub.expire - time.time()
-            when = time.strftime("%d.%m.%Y", time.localtime(sub.expire))
+            when = i18n.date(sub.expire)
             if left <= 0:
-                info["left"] = f"истекла {when}"
+                info["left"] = tr("истекла {when}", when=when)
             elif left < 86400:
-                info["left"] = f"{max(1, int(left // 3600))} ч  ·  до {when}"
+                info["left"] = tr("{hours} ч  ·  до {when}", hours=max(1, int(left // 3600)), when=when)
             else:
-                info["left"] = f"{int(left // 86400)} дн.  ·  до {when}"
+                info["left"] = tr("{days} дн.  ·  до {when}", days=int(left // 86400), when=when)
         used = sub.upload + sub.download
         if sub.total:
-            info["traffic"] = f"{theme.human_bytes(used)} из {theme.human_bytes(sub.total)}"
+            info["traffic"] = tr("{used} из {total}", used=theme.human_bytes(used), total=theme.human_bytes(sub.total))
             info["frac"] = used / sub.total
         elif used:
-            info["traffic"] = f"{theme.human_bytes(used)}  ·  без лимита"
+            info["traffic"] = tr("{used}  ·  без лимита", used=theme.human_bytes(used))
         links = []
         if sub.web_page_url:
-            links.append(("Сайт", sub.web_page_url))
+            links.append((tr("Сайт"), sub.web_page_url))
         if sub.support_url and sub.support_url != sub.web_page_url:
-            links.append(("Поддержка", sub.support_url))
+            links.append((tr("Поддержка"), sub.support_url))
         info["links"] = links
         return info if any((info["announce"], info.get("left"), info.get("traffic"), links)) else None
 
@@ -764,63 +772,63 @@ class MainWindow(QMainWindow):
         elif kind == "server" and many:
             self._marked_menu(menu)
         elif kind == "header" and ident == BALANCERS:
-            menu.addAction(icons.icon("plus", theme.TEXT, 16), "Создать балансировщик…", self.edit_balancer)
-            menu.addAction(icons.icon("pulse", theme.TEXT, 16), "Проверить задержку",
+            menu.addAction(icons.icon("plus", theme.TEXT, 16), tr("Создать балансировщик…"), self.edit_balancer)
+            menu.addAction(icons.icon("pulse", theme.TEXT, 16), tr("Проверить задержку"),
                            lambda: self._header_action("ping", BALANCERS))
             menu.addSeparator()
-            menu.addAction(icons.icon("trash", theme.TEXT, 16), "Удалить все балансировщики",
+            menu.addAction(icons.icon("trash", theme.TEXT, 16), tr("Удалить все балансировщики"),
                            lambda: self._remove_balancers([b.id for b in store.balancers]))
         elif kind == "server":
             srv = store.server(ident)
-            menu.addAction(icons.icon("arrow_up", theme.TEXT, 16), "Подключиться",
+            menu.addAction(icons.icon("arrow_up", theme.TEXT, 16), tr("Подключиться"),
                            lambda: self.ctl.select(ident, connect=True))
-            menu.addAction(icons.icon("pulse", theme.TEXT, 16), "Проверить задержку", lambda: self._ping([srv]))
-            self._fill_share(menu.addMenu(icons.icon("share", theme.TEXT, 16), "Поделиться"), "server", ident)
-            menu.addAction(icons.icon("check", theme.TEXT, 16), "Выделить  (Ctrl+клик)",
+            menu.addAction(icons.icon("pulse", theme.TEXT, 16), tr("Проверить задержку"), lambda: self._ping([srv]))
+            self._fill_share(menu.addMenu(icons.icon("share", theme.TEXT, 16), tr("Поделиться")), "server", ident)
+            menu.addAction(icons.icon("check", theme.TEXT, 16), tr("Выделить  (Ctrl+клик)"),
                            lambda: self.list.set_marked(self.list.marked | {ident}))
-            self._fill_balancer_menu(menu.addMenu(icons.icon("bolt", theme.TEXT, 16), "Добавить в балансировщик"),
+            self._fill_balancer_menu(menu.addMenu(icons.icon("bolt", theme.TEXT, 16), tr("Добавить в балансировщик")),
                                      [ident])
             if not store.subscription(srv.sub_id):
-                move = menu.addMenu("Переместить в группу")
+                move = menu.addMenu(tr("Переместить в группу"))
                 for gid, title in self._groups():
                     act = move.addAction(title, lambda g=gid: self.ctl.move_server(ident, self._owner(g)))
                     act.setEnabled(self._owner(gid) != srv.sub_id)
                 menu.addSeparator()
-                menu.addAction(icons.icon("trash", theme.TEXT, 16), "Удалить", lambda: self.ctl.remove_server(ident))
+                menu.addAction(icons.icon("trash", theme.TEXT, 16), tr("Удалить"), lambda: self.ctl.remove_server(ident))
         elif store.subscription(ident):
             sub = store.subscription(ident)
-            menu.addAction(icons.icon("refresh", theme.TEXT, 16), "Обновить",
+            menu.addAction(icons.icon("refresh", theme.TEXT, 16), tr("Обновить"),
                            lambda: self.ctl.update_subscriptions(sub_ids=[ident]))
-            menu.addAction(icons.icon("pulse", theme.TEXT, 16), "Проверить задержку",
+            menu.addAction(icons.icon("pulse", theme.TEXT, 16), tr("Проверить задержку"),
                            lambda: self._ping(store.servers_of(ident)))
             self._fill_sort(menu, ident)
-            menu.addAction("Переименовать…", lambda: self._rename_sub(ident))
+            menu.addAction(tr("Переименовать…"), lambda: self._rename_sub(ident))
             menu.addAction("User-Agent…", lambda: self._sub_ua(ident))
-            hw = menu.addAction("Отправлять HWID")
+            hw = menu.addAction(tr("Отправлять HWID"))
             hw.setCheckable(True)
             hw.setChecked(sub.send_hwid)
-            hw.setToolTip("Включается само, если без HWID подписка не загрузилась. Режим для всех подписок — "
-                          "в настройках, вкладка «Подписки»")
+            hw.setToolTip(tr("Включается само, если без HWID подписка не загрузилась. Режим для всех подписок — "
+                             "в настройках, вкладка «Подписки»"))
             hw.toggled.connect(lambda on: self.ctl.set_subscription_hwid(ident, on))
             menu.setToolTipsVisible(True)
-            self._fill_share(menu.addMenu(icons.icon("share", theme.TEXT, 16), "Поделиться"), "header", ident)
-            for label, url in (("Сайт", sub.web_page_url), ("Поддержка", sub.support_url)):
+            self._fill_share(menu.addMenu(icons.icon("share", theme.TEXT, 16), tr("Поделиться")), "header", ident)
+            for label, url in ((tr("Сайт"), sub.web_page_url), (tr("Поддержка"), sub.support_url)):
                 if url:
                     menu.addAction(icons.icon("link", theme.TEXT, 16), label,
                                    lambda u=url: QDesktopServices.openUrl(QUrl(u)))
             menu.addSeparator()
-            menu.addAction(icons.icon("trash", theme.TEXT, 16), "Удалить подписку", lambda: self._remove_sub(ident))
+            menu.addAction(icons.icon("trash", theme.TEXT, 16), tr("Удалить подписку"), lambda: self._remove_sub(ident))
         else:
-            menu.addAction(icons.icon("plus", theme.TEXT, 16), "Добавить конфиги…", lambda: self.add_configs(ident))
-            menu.addAction(icons.icon("pulse", theme.TEXT, 16), "Проверить задержку",
+            menu.addAction(icons.icon("plus", theme.TEXT, 16), tr("Добавить конфиги…"), lambda: self.add_configs(ident))
+            menu.addAction(icons.icon("pulse", theme.TEXT, 16), tr("Проверить задержку"),
                            lambda: self._ping(store.servers_of(self._owner(ident))))
             self._fill_sort(menu, ident)
             if store.servers_of(self._owner(ident)):
-                self._fill_share(menu.addMenu(icons.icon("share", theme.TEXT, 16), "Поделиться"), "header", ident)
+                self._fill_share(menu.addMenu(icons.icon("share", theme.TEXT, 16), tr("Поделиться")), "header", ident)
             if ident != MANUAL:
-                menu.addAction("Переименовать…", lambda: self._rename_group(ident))
+                menu.addAction(tr("Переименовать…"), lambda: self._rename_group(ident))
                 menu.addSeparator()
-                menu.addAction(icons.icon("trash", theme.TEXT, 16), "Удалить группу",
+                menu.addAction(icons.icon("trash", theme.TEXT, 16), tr("Удалить группу"),
                                lambda: self._remove_group(ident))
         menu.exec(pos)
 
@@ -828,9 +836,9 @@ class MainWindow(QMainWindow):
         """Sort submenu of one subscription / group: its own order or the common one."""
         s = self.ctl.settings
         current = s.group_sort.get(gid, "")
-        sub = menu.addMenu(icons.icon("sort", theme.TEXT, 16), "Сортировка")
+        sub = menu.addMenu(icons.icon("sort", theme.TEXT, 16), tr("Сортировка"))
         common = {key: text for key, text, _ in SORT_MODES}[s.sort_mode]
-        for key, text in [("", f"Как у всех ({common})")] + [(k, t) for k, t, _ in SORT_MODES]:
+        for key, text in [("", tr("Как у всех ({common})", common=common))] + [(k, t) for k, t, _ in SORT_MODES]:
             act = sub.addAction(text, lambda k=key: self._set_group_sort(gid, k))
             act.setCheckable(True)
             act.setChecked(key == current)
@@ -857,24 +865,24 @@ class MainWindow(QMainWindow):
         ic = lambda name: icons.icon(name, theme.TEXT, 16)  # noqa: E731
         store = self.ctl.store
         if kind == "server":
-            menu.addAction(ic("qr"), "QR-код", lambda: self._share_server(ident, "qr"))
-            menu.addAction(ic("copy"), "В буфер обмена", lambda: self._share_server(ident, "link"))
-            conf = menu.addMenu(ic("code"), "Конфигурация")
-            conf.addAction(ic("copy"), "В буфер обмена", lambda: self._share_server(ident, "json"))
-            conf.addAction(ic("file"), "Файлом…", lambda: self._share_server(ident, "json-file"))
+            menu.addAction(ic("qr"), tr("QR-код"), lambda: self._share_server(ident, "qr"))
+            menu.addAction(ic("copy"), tr("В буфер обмена"), lambda: self._share_server(ident, "link"))
+            conf = menu.addMenu(ic("code"), tr("Конфигурация"))
+            conf.addAction(ic("copy"), tr("В буфер обмена"), lambda: self._share_server(ident, "json"))
+            conf.addAction(ic("file"), tr("Файлом…"), lambda: self._share_server(ident, "json-file"))
             return
         sub = store.subscription(ident)
         if sub:
-            url = menu.addMenu(ic("link"), "Поделиться URL подписки")
-            url.addAction(ic("copy"), "В буфер обмена", lambda: self._copy(sub.url, "URL подписки скопирован"))
-            url.addAction(ic("qr"), "QR-код", lambda: self._show_qr(
-                sub.title, sub.url, "Отсканируйте в Happ, v2rayNG, Hiddify или другом клиенте — подписка "
-                                    "добавится вместе с обновлениями."))
-        export = menu.addMenu(ic("arrow_up"), "Экспортировать")
+            url = menu.addMenu(ic("link"), tr("Поделиться URL подписки"))
+            url.addAction(ic("copy"), tr("В буфер обмена"), lambda: self._copy(sub.url, tr("URL подписки скопирован")))
+            url.addAction(ic("qr"), tr("QR-код"), lambda: self._show_qr(
+                sub.title, sub.url, tr("Отсканируйте в Happ, v2rayNG, Hiddify или другом клиенте — подписка "
+                                       "добавится вместе с обновлениями.")))
+        export = menu.addMenu(ic("arrow_up"), tr("Экспортировать"))
         export.setToolTipsVisible(True)
-        for act in (export.addAction(ic("copy"), "В буфер обмена", lambda: self._export(ident, False)),
-                    export.addAction(ic("file"), "В файл…", lambda: self._export(ident, True))):
-            act.setToolTip("Каждый конфиг — ссылкой vless://, hy2:// и т.п., по одной в строке")
+        for act in (export.addAction(ic("copy"), tr("В буфер обмена"), lambda: self._export(ident, False)),
+                    export.addAction(ic("file"), tr("В файл…"), lambda: self._export(ident, True))):
+            act.setToolTip(tr("Каждый конфиг — ссылкой vless://, hy2:// и т.п., по одной в строке"))
 
     # -- several servers at once ------------------------------------------------------------
     def _marked(self) -> list[Server]:
@@ -888,7 +896,7 @@ class MainWindow(QMainWindow):
 
     def _on_marked(self, ids: set) -> None:
         n = len(ids)
-        self.sel_label.setText(f"Выбрано: {n}")
+        self.sel_label.setText(tr("Выбрано: {n}", n=n))
         self.sel_bar.setVisible(n > 0)
         # Sharing and adding to a balancer are for servers: balancers alone don't get them.
         servers = bool(self._marked())
@@ -900,14 +908,14 @@ class MainWindow(QMainWindow):
         servers = self._marked()
         if servers:
             k = len(servers)
-            self._fill_share_marked(menu.addMenu(icons.icon("share", theme.TEXT, 16), f"Поделиться ({k})"))
+            self._fill_share_marked(menu.addMenu(icons.icon("share", theme.TEXT, 16), tr("Поделиться ({k})", k=k)))
             self._fill_balancer_menu(menu.addMenu(icons.icon("bolt", theme.TEXT, 16),
-                                                  f"Добавить в балансировщик ({k})"), [s.id for s in servers])
-        menu.addAction(icons.icon("pulse", theme.TEXT, 16), f"Проверить задержку ({n})",
+                                                  tr("Добавить в балансировщик ({k})", k=k)), [s.id for s in servers])
+        menu.addAction(icons.icon("pulse", theme.TEXT, 16), tr("Проверить задержку ({n})", n=n),
                        lambda: self._ping(self._marked() + [self.ctl.resolve(i) for i in self._marked_balancers()]))
         menu.addSeparator()
-        menu.addAction(icons.icon("trash", theme.TEXT, 16), f"Удалить ({n})…", self._remove_marked)
-        menu.addAction(icons.icon("close", theme.TEXT, 16), "Снять выделение", lambda: self.list.set_marked(set()))
+        menu.addAction(icons.icon("trash", theme.TEXT, 16), tr("Удалить ({n})…", n=n), self._remove_marked)
+        menu.addAction(icons.icon("close", theme.TEXT, 16), tr("Снять выделение"), lambda: self.list.set_marked(set()))
 
     def _share_marked_at(self, button: QWidget) -> None:
         menu = QMenu(self)
@@ -917,15 +925,15 @@ class MainWindow(QMainWindow):
     def _fill_share_marked(self, menu: QMenu) -> None:
         """The same three ways as for one server: QR code, links, configuration."""
         ic = lambda name: icons.icon(name, theme.TEXT, 16)  # noqa: E731
-        menu.addAction(ic("qr"), "QR-код", lambda: self._share_marked("qr"))
-        lnk = menu.addMenu(ic("link"), "Ссылки")
+        menu.addAction(ic("qr"), tr("QR-код"), lambda: self._share_marked("qr"))
+        lnk = menu.addMenu(ic("link"), tr("Ссылки"))
         lnk.setToolTipsVisible(True)
-        for act in (lnk.addAction(ic("copy"), "В буфер обмена", lambda: self._share_marked("link")),
-                    lnk.addAction(ic("file"), "В файл…", lambda: self._share_marked("link-file"))):
-            act.setToolTip("Каждый конфиг — ссылкой vless://, hy2:// и т.п., по одной в строке")
-        conf = menu.addMenu(ic("code"), "Конфигурация")
-        conf.addAction(ic("copy"), "В буфер обмена", lambda: self._share_marked("json"))
-        conf.addAction(ic("file"), "В файл…", lambda: self._share_marked("json-file"))
+        for act in (lnk.addAction(ic("copy"), tr("В буфер обмена"), lambda: self._share_marked("link")),
+                    lnk.addAction(ic("file"), tr("В файл…"), lambda: self._share_marked("link-file"))):
+            act.setToolTip(tr("Каждый конфиг — ссылкой vless://, hy2:// и т.п., по одной в строке"))
+        conf = menu.addMenu(ic("code"), tr("Конфигурация"))
+        conf.addAction(ic("copy"), tr("В буфер обмена"), lambda: self._share_marked("json"))
+        conf.addAction(ic("file"), tr("В файл…"), lambda: self._share_marked("json-file"))
 
     def _share_marked(self, how: str) -> None:
         servers = self._marked()
@@ -934,29 +942,29 @@ class MainWindow(QMainWindow):
         if len(servers) == 1 and how != "link-file":
             self._share_server(servers[0].id, how)
             return
-        title = f"Серверы ({len(servers)})"
+        title = tr("Серверы ({n})", n=len(servers))
         if how in ("json", "json-file"):
             text = json.dumps(share.export_json(servers, self.ctl.settings), ensure_ascii=False, indent=2)
             if how == "json":
-                self._copy(text, f"Конфигурации скопированы: {len(servers)} (Xray JSON, массивом)")
-            elif save_text(self, "Сохранить конфигурации", "Nimbus servers", text, "json"):
-                self.toaster.show(f"Сохранено конфигураций: {len(servers)}")
+                self._copy(text, tr("Конфигурации скопированы: {n} (Xray JSON, массивом)", n=len(servers)))
+            elif save_text(self, tr("Сохранить конфигурации"), "Nimbus servers", text, "json"):
+                self.toaster.show(tr("Сохранено конфигураций: {n}", n=len(servers)))
             return
         text, skipped = share.export_links(servers)
         if not text:
-            self.toaster.show("Эти конфиги нельзя записать ссылками — поделитесь ими как конфигурацией", error=True)
+            self.toaster.show(tr("Эти конфиги нельзя записать ссылками — поделитесь ими как конфигурацией"), error=True)
             return
         n = len(text.splitlines())
-        tail = f", пропущено: {skipped} (только как конфигурация)" if skipped else ""
+        tail = tr(", пропущено: {skipped} (только как конфигурация)", skipped=skipped) if skipped else ""
         if how == "qr":
-            self._show_qr(title, text, "Ссылки по одной в строке. Happ, v2rayNG и Hiddify добавят их все; "
-                                       "если клиент взял только одну — поделитесь через буфер обмена.",
-                          f"Ссылок в коде: {n}{tail}." if skipped else "")
+            self._show_qr(title, text, tr("Ссылки по одной в строке. Happ, v2rayNG и Hiddify добавят их все; "
+                                          "если клиент взял только одну — поделитесь через буфер обмена."),
+                          tr("Ссылок в коде: {n}{tail}.", n=n, tail=tail) if skipped else "")
         elif how == "link-file":
-            if save_text(self, "Сохранить ссылки", "Nimbus servers", text + "\n", "txt"):
-                self.toaster.show(f"Сохранено ссылок: {n}{tail}")
+            if save_text(self, tr("Сохранить ссылки"), "Nimbus servers", text + "\n", "txt"):
+                self.toaster.show(tr("Сохранено ссылок: {n}{tail}", n=n, tail=tail))
         else:
-            self._copy(text + "\n", f"Скопировано ссылок: {n}{tail}")
+            self._copy(text + "\n", tr("Скопировано ссылок: {n}{tail}", n=n, tail=tail))
 
     def _remove_marked(self) -> None:
         servers = self._marked()
@@ -968,19 +976,19 @@ class MainWindow(QMainWindow):
         own = [s for s in servers if not store.subscription(s.sub_id)]
         from_subs = len(servers) - len(own)
         if not own and not bals:
-            self.toaster.show("Серверы подписки удаляются только вместе с подпиской: при обновлении они "
-                              "вернутся", error=True)
+            self.toaster.show(tr("Серверы подписки удаляются только вместе с подпиской: при обновлении они "
+                                 "вернутся"), error=True)
             return
         parts = []
         if own:
-            parts.append(f"серверы: {len(own)}")
+            parts.append(tr("серверы: {n}", n=len(own)))
         if bals:
-            parts.append(f"балансировщики: {len(bals)}")
-        text = "Будут удалены выбранные " + ", ".join(parts) + "."
+            parts.append(tr("балансировщики: {n}", n=len(bals)))
+        text = tr("Будут удалены выбранные ") + ", ".join(parts) + "."
         if from_subs:
-            text += (f" Серверы из подписок ({from_subs}) останутся: при обновлении они вернулись бы, "
-                     f"их удаляют вместе с подпиской.")
-        if ask(self, "Удалить выбранное" if bals else "Удалить серверы", text, "Удалить"):
+            text += (tr(" Серверы из подписок ({from_subs}) останутся: при обновлении они вернулись бы, их удаляют "
+                        "вместе с подпиской.", from_subs=from_subs))
+        if ask(self, tr("Удалить выбранное") if bals else tr("Удалить серверы"), text, tr("Удалить")):
             self.list.set_marked(set())
             if own:
                 self.ctl.remove_servers([s.id for s in own])
@@ -995,7 +1003,7 @@ class MainWindow(QMainWindow):
         try:
             QrDialog(self, title, text, hint, note).exec()
         except qr.DataTooLong:
-            self.toaster.show("Слишком длинно для QR-кода — поделитесь через буфер обмена", error=True)
+            self.toaster.show(tr("Слишком длинно для QR-кода — поделитесь через буфер обмена"), error=True)
 
     def _share_server(self, server_id: str, how: str) -> None:
         srv = self.ctl.resolve(server_id)
@@ -1004,55 +1012,56 @@ class MainWindow(QMainWindow):
         if how in ("json", "json-file"):
             text = json.dumps(share.server_json(srv, self.ctl.settings), ensure_ascii=False, indent=2)
             if how == "json":
-                self._copy(text, "Конфигурация (Xray JSON) скопирована")
-            elif save_text(self, "Сохранить конфигурацию", srv.name, text, "json"):
-                self.toaster.show("Конфигурация сохранена")
+                self._copy(text, tr("Конфигурация (Xray JSON) скопирована"))
+            elif save_text(self, tr("Сохранить конфигурацию"), srv.name, text, "json"):
+                self.toaster.show(tr("Конфигурация сохранена"))
             return
         link = share.server_link(srv)
         if not link:
-            self.toaster.show("Этот конфиг нельзя записать ссылкой — поделитесь им как конфигурацией", error=True)
+            self.toaster.show(tr("Этот конфиг нельзя записать ссылкой — поделитесь им как конфигурацией"), error=True)
             return
         n = share.node_count(srv)
-        note = (f"В ссылке основной узел из {n}: ссылка не умеет балансировщик. Весь конфиг с автовыбором — "
-                f"через «Конфигурация».") if n > 1 else ""
+        note = (tr("В ссылке основной узел из {n}: ссылка не умеет балансировщик. Весь конфиг с автовыбором — через "
+                   "«Конфигурация».", n=n)) if n > 1 else ""
         if how == "qr":
-            self._show_qr(srv.name, link, "Отсканируйте в Happ, v2rayNG, Hiddify, Streisand или другом клиенте, "
-                                          "чтобы добавить этот сервер.", note)
+            self._show_qr(srv.name, link, tr("Отсканируйте в Happ, v2rayNG, Hiddify, Streisand или другом клиенте, "
+                                             "чтобы добавить этот сервер."), note)
         else:
-            self._copy(link, "Ссылка скопирована" + (f". {note}" if note else ""))
+            self._copy(link, tr("Ссылка скопирована") + (f". {note}" if note else ""))
 
     def _export(self, gid: str, to_file: bool) -> None:
         store = self.ctl.store
         sub = store.subscription(gid)
         servers = store.servers_of(self._owner(gid))
-        title = sub.title if sub else dict(self._groups()).get(gid, "Серверы")
+        title = sub.title if sub else dict(self._groups()).get(gid, tr("Серверы"))
         text, skipped = share.export_links(servers)
         if not text:
-            self.toaster.show("Нечего экспортировать", error=True)
+            self.toaster.show(tr("Нечего экспортировать"), error=True)
             return
         n = len(text.splitlines())
-        tail = f", пропущено: {skipped}" if skipped else ""
+        tail = tr(", пропущено: {skipped}", skipped=skipped) if skipped else ""
         if not to_file:
-            self._copy(text + "\n", f"Скопировано ссылок: {n}{tail}")
-        elif save_text(self, "Экспорт конфигов", title, text + "\n", "txt"):
-            self.toaster.show(f"Сохранено ссылок: {n}{tail}")
+            self._copy(text + "\n", tr("Скопировано ссылок: {n}{tail}", n=n, tail=tail))
+        elif save_text(self, tr("Экспорт конфигов"), title, text + "\n", "txt"):
+            self.toaster.show(tr("Сохранено ссылок: {n}{tail}", n=n, tail=tail))
 
     def _rename_group(self, gid: str) -> None:
         group = self.ctl.store.group(gid)
-        name, ok = get_text(self, "Переименовать", "Название группы.", group.name)
+        name, ok = get_text(self, tr("Переименовать"), tr("Название группы."), group.name)
         if ok:
             self.ctl.rename_group(gid, name)
 
     def _remove_group(self, gid: str) -> None:
         group = self.ctl.store.group(gid)
         n = len(self.ctl.store.servers_of(gid))
-        text = f"Группа «{group.name}» и её конфиги ({n}) будут удалены." if n else f"Группа «{group.name}» будет удалена."
-        if ask(self, "Удалить группу", text, "Удалить"):
+        text = tr("Группа «{name}» и её конфиги ({n}) будут удалены.",
+                  name=group.name, n=n) if n else tr("Группа «{name}» будет удалена.", name=group.name)
+        if ask(self, tr("Удалить группу"), text, tr("Удалить")):
             self.ctl.remove_group(gid)
 
     def _rename_sub(self, sub_id: str) -> None:
         sub = self.ctl.store.subscription(sub_id)
-        name, ok = get_text(self, "Переименовать", "Название подписки. Пусто — как у провайдера.",
+        name, ok = get_text(self, tr("Переименовать"), tr("Название подписки. Пусто — как у провайдера."),
                             sub.custom_name)
         if ok:
             self.ctl.rename_subscription(sub_id, name)
@@ -1065,7 +1074,8 @@ class MainWindow(QMainWindow):
 
     def _remove_sub(self, sub_id: str) -> None:
         sub = self.ctl.store.subscription(sub_id)
-        if ask(self, "Удалить подписку", f"«{sub.title}» и все её серверы будут удалены.", "Удалить"):
+        if ask(self, tr("Удалить подписку"), tr("«{title}» и все её серверы будут удалены.", title=sub.title),
+               tr("Удалить")):
             self.ctl.remove_subscription(sub_id)
 
     # -- adding ----------------------------------------------------------------------------
@@ -1080,7 +1090,7 @@ class MainWindow(QMainWindow):
         else:
             n = self.ctl.import_text(text)
             if n:
-                self.toaster.show(f"Добавлено серверов: {n}")
+                self.toaster.show(tr("Добавлено серверов: {n}", n=n))
 
     def open_link(self, text: str, confirm: bool = True) -> bool:
         """A deep link (nimbus://import/…, happ://add/…, v2rayn://install-sub?url=… and the like).
@@ -1090,7 +1100,7 @@ class MainWindow(QMainWindow):
         if link is None:
             return False
         if link.kind == "crypt":
-            inform(self, "Защищённая ссылка Happ", CRYPT_TEXT)
+            inform(self, tr("Защищённая ссылка Happ"), CRYPT_TEXT)
         elif link.kind == "subscription":
             if not confirm:
                 self.ctl.add_subscription(link.payload)
@@ -1104,17 +1114,17 @@ class MainWindow(QMainWindow):
             else:
                 n = self.ctl.import_text(link.payload)
                 if n:
-                    self.toaster.show(f"Добавлено серверов: {n}")
+                    self.toaster.show(tr("Добавлено серверов: {n}", n=n))
         else:
-            self.toaster.show("В ссылке нет адреса подписки или конфигов", error=True)
+            self.toaster.show(tr("В ссылке нет адреса подписки или конфигов"), error=True)
         return True
 
     def add_menu(self, button: QWidget) -> None:
         menu = QMenu(self)
-        menu.addAction(icons.icon("globe", theme.TEXT, 16), "Подписку…", self.add_subscription)
-        menu.addAction(icons.icon("paste", theme.TEXT, 16), "Конфиги…", lambda: self.add_configs(MANUAL))
-        menu.addAction(icons.icon("folder", theme.TEXT, 16), "Группу…", self.add_group)
-        menu.addAction(icons.icon("bolt", theme.TEXT, 16), "Балансировщик…", self.edit_balancer)
+        menu.addAction(icons.icon("globe", theme.TEXT, 16), tr("Подписку…"), self.add_subscription)
+        menu.addAction(icons.icon("paste", theme.TEXT, 16), tr("Конфиги…"), lambda: self.add_configs(MANUAL))
+        menu.addAction(icons.icon("folder", theme.TEXT, 16), tr("Группу…"), self.add_group)
+        menu.addAction(icons.icon("bolt", theme.TEXT, 16), tr("Балансировщик…"), self.edit_balancer)
         menu.exec(button.mapToGlobal(button.rect().bottomLeft() + QPoint(0, 6)))
 
     def add_subscription(self) -> None:
@@ -1133,7 +1143,7 @@ class MainWindow(QMainWindow):
             title = dict(self._groups()).get(target, "")
             if n:
                 self._collapsed.discard(target)
-                self.toaster.show(f"Добавлено конфигов: {n} → «{title}»")
+                self.toaster.show(tr("Добавлено конфигов: {n} → «{title}»", n=n, title=title))
 
     def add_group(self) -> None:
         dlg = ConfigsDialog(self, self._groups(), new_group=True)
@@ -1143,15 +1153,15 @@ class MainWindow(QMainWindow):
         n = self._import_chunks(dlg.chunks(), group.id)
         QTimer.singleShot(50, lambda: self.list.scroll_to_group(group.id))
         if n:
-            self.toaster.show(f"Группа «{group.name}» создана, конфигов: {n}")
+            self.toaster.show(tr("Группа «{name}» создана, конфигов: {n}", name=group.name, n=n))
         else:
-            self.toaster.show(f"Группа «{group.name}» создана. Добавьте в неё конфиги: «+» справа от названия "
-                              f"группы или правый клик по ней.")
+            self.toaster.show(tr("Группа «{name}» создана. Добавьте в неё конфиги: «+» справа от названия группы или "
+                                 "правый клик по ней.", name=group.name))
 
     def paste_clipboard(self) -> None:
         text = QGuiApplication.clipboard().text()
         if not text.strip():
-            self.toaster.show("Буфер обмена пуст", error=True)
+            self.toaster.show(tr("Буфер обмена пуст"), error=True)
             return
         self._import(text)
 
@@ -1160,7 +1170,7 @@ class MainWindow(QMainWindow):
         """(store owner id, title, servers) of everything a balancer can take servers from."""
         store = self.ctl.store
         return ([(s.id, s.title, store.servers_of(s.id)) for s in store.subscriptions]
-                + [("", "Мои серверы", store.servers_of(""))]
+                + [("", tr("Мои серверы"), store.servers_of(""))]
                 + [(g.id, g.name, store.servers_of(g.id)) for g in store.groups])
 
     def edit_balancer(self, balancer_id: str = "", picked: list[str] | None = None) -> None:
@@ -1175,37 +1185,37 @@ class MainWindow(QMainWindow):
             self.ctl.save_balancer(Balancer(id=old.id, name=name, server_ids=dlg.server_ids(),
                                             sub_ids=dlg.sub_ids(), interval=dlg.interval.value(),
                                             mode=dlg.balancer_mode()))
-            self.toaster.show(f"Балансировщик «{name}» сохранён")
+            self.toaster.show(tr("Балансировщик «{name}» сохранён", name=name))
             return
-        bal = self.ctl.new_balancer(name or f"Балансировщик {len(self.ctl.store.balancers) + 1}",
+        bal = self.ctl.new_balancer(name or tr("Балансировщик {n}", n=len(self.ctl.store.balancers) + 1),
                                     dlg.server_ids(), dlg.sub_ids(), dlg.interval.value(), dlg.balancer_mode())
         self.list.set_marked(set())
         self._collapsed.discard(BALANCERS)
         self.ctl.select(bal.id)
         QTimer.singleShot(50, lambda: self.list.scroll_to_group(BALANCERS))
-        self.toaster.show(f"Балансировщик «{bal.name}» создан. Двойной клик — подключиться")
+        self.toaster.show(tr("Балансировщик «{name}» создан. Двойной клик — подключиться", name=bal.name))
 
     def _balancer_context(self, menu: QMenu, ident: str) -> None:
-        menu.addAction(icons.icon("arrow_up", theme.TEXT, 16), "Подключиться",
+        menu.addAction(icons.icon("arrow_up", theme.TEXT, 16), tr("Подключиться"),
                        lambda: self.ctl.select(ident, connect=True))
-        menu.addAction(icons.icon("pulse", theme.TEXT, 16), "Проверить задержку",
+        menu.addAction(icons.icon("pulse", theme.TEXT, 16), tr("Проверить задержку"),
                        lambda: self._ping([s for s in [self.ctl.resolve(ident)] if s]))
-        menu.addAction(icons.icon("check", theme.TEXT, 16), "Выделить  (Ctrl+клик)",
+        menu.addAction(icons.icon("check", theme.TEXT, 16), tr("Выделить  (Ctrl+клик)"),
                        lambda: self.list.set_marked(self.list.marked | {ident}))
-        menu.addAction(icons.icon("gear", theme.TEXT, 16), "Изменить…", lambda: self.edit_balancer(ident))
-        menu.addAction("Переименовать…", lambda: self._rename_balancer(ident))
+        menu.addAction(icons.icon("gear", theme.TEXT, 16), tr("Изменить…"), lambda: self.edit_balancer(ident))
+        menu.addAction(tr("Переименовать…"), lambda: self._rename_balancer(ident))
         menu.addSeparator()
-        menu.addAction(icons.icon("trash", theme.TEXT, 16), "Удалить", lambda: self._remove_balancers([ident]))
+        menu.addAction(icons.icon("trash", theme.TEXT, 16), tr("Удалить"), lambda: self._remove_balancers([ident]))
 
     def _remove_balancers(self, balancer_ids: list[str]) -> None:
         bals = [b for b in (self.ctl.store.balancer(i) for i in balancer_ids) if b]
         if not bals:
             return
         if len(bals) == 1:
-            title, text = "Удалить балансировщик", f"Балансировщик «{bals[0].name}» будет удалён."
+            title, text = tr("Удалить балансировщик"), tr("Балансировщик «{name}» будет удалён.", name=bals[0].name)
         else:
-            title, text = "Удалить балансировщики", f"Будут удалены балансировщики: {len(bals)}."
-        if ask(self, title, text + " Серверы в подписках и группах останутся на своих местах.", "Удалить"):
+            title, text = tr("Удалить балансировщики"), tr("Будут удалены балансировщики: {n}.", n=len(bals))
+        if ask(self, title, text + tr(" Серверы в подписках и группах останутся на своих местах."), tr("Удалить")):
             self.list.set_marked(self.list.marked - {b.id for b in bals})
             self.ctl.remove_balancers([b.id for b in bals])
 
@@ -1215,7 +1225,7 @@ class MainWindow(QMainWindow):
             menu.addAction(b.name, lambda bid=b.id: self._add_to_balancer(bid, server_ids))
         if self.ctl.store.balancers:
             menu.addSeparator()
-        menu.addAction(icons.icon("plus", theme.TEXT, 16), "Новый балансировщик…",
+        menu.addAction(icons.icon("plus", theme.TEXT, 16), tr("Новый балансировщик…"),
                        lambda: self.edit_balancer(picked=server_ids))
 
     def _balancer_menu_at(self, button: QWidget) -> None:
@@ -1230,11 +1240,12 @@ class MainWindow(QMainWindow):
         self.ctl.add_to_balancer(balancer_id, server_ids)
         self.list.set_marked(set())
         n = len(server_ids)
-        self.toaster.show(f"Добавлено в «{bal.name}»: {n} {plural(n, 'сервер', 'сервера', 'серверов')}")
+        self.toaster.show(tr("Добавлено в «{name}»: {n} {servers}",
+                             name=bal.name, n=n, servers=plural(n, "сервер", "сервера", "серверов")))
 
     def _rename_balancer(self, balancer_id: str) -> None:
         bal = self.ctl.store.balancer(balancer_id)
-        name, ok = get_text(self, "Переименовать", "Название балансировщика.", bal.name)
+        name, ok = get_text(self, tr("Переименовать"), tr("Название балансировщика."), bal.name)
         if ok and name:
             bal.name = name
             self.ctl.store.save()
@@ -1281,8 +1292,14 @@ class MainWindow(QMainWindow):
     def show_settings(self, tab: str = "") -> None:
         dlg = SettingsDialog(self.ctl, self, tab)
         if dlg.exec():
-            self.ctl.apply_settings(dlg.result_settings())
+            new = dlg.result_settings()
+            self.ctl.apply_settings(new)
             self._sync_mode_buttons()
+            if i18n.resolve(new.language) != i18n.LANG and ask(
+                    self, tr("Язык интерфейса"),
+                    tr("Новый язык заработает после перезапуска Nimbus. Перезапустить сейчас? Подключение "
+                       "восстановится само."), tr("Перезапустить"), tr("Позже")):
+                self.restart_requested.emit()
 
     def show_logs(self) -> None:
         if self._log_dialog is None:

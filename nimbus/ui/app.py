@@ -11,6 +11,7 @@ from PySide6.QtGui import QAction, QFont, QFontMetrics
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
+from ..i18n import tr
 from .. import balancer, deeplink, paths, updater, winsys
 from ..controller import Controller
 from ..settings import Settings
@@ -54,7 +55,7 @@ class App:
         # copy start whenever it couldn't reach the first (e.g. the first runs elevated after a
         # switch to TUN), and every launch from the exe left one more icon in the tray.
         # An elevated relaunch may start before the old instance has exited; wait for it.
-        deadline = time.time() + (8 if "--elevated" in self.args else 0)
+        deadline = time.time() + (8 if self.args & {"--elevated", "--restarted"} else 0)
         while True:
             self._mutex = winsys.single_instance_mutex(INSTANCE_KEY)
             if self._mutex:
@@ -77,6 +78,7 @@ class App:
         self.ctl = Controller()
         self.win = MainWindow(self.ctl)
         self.win.quit_requested.connect(self.quit)
+        self.win.restart_requested.connect(self.restart)
         self.ctl.need_admin.connect(self._ask_elevation)
         self.ctl.update_checked.connect(self._on_update_checked)
         self._update_dialog = None
@@ -96,11 +98,12 @@ class App:
         if self.link:
             QTimer.singleShot(200, lambda: (self.show_window(), self.win.open_link(self.link)))
         if "--updated" in self.args:
-            QTimer.singleShot(600, lambda: self.win.toaster.show(f"Nimbus обновлён до версии {paths.VERSION}"))
+            QTimer.singleShot(600, lambda: self.win.toaster.show(tr("Nimbus обновлён до версии {version}",
+                                                                    version=paths.VERSION)))
         elif "--update-failed" in self.args:
             QTimer.singleShot(600, lambda: self.win.toaster.show(
-                "Обновление не установилось: файлы программы были заняты. Прежняя версия на месте, "
-                "попробуйте ещё раз", error=True))
+                tr("Обновление не установилось: файлы программы были заняты. Прежняя версия на месте, "
+                   "попробуйте ещё раз"), error=True))
         QTimer.singleShot(1500, self._register_links)
         QTimer.singleShot(10_000, self.ctl.maybe_check_updates)
         # What the last update left in the temp folder; later, so a swap helper has surely exited.
@@ -126,16 +129,16 @@ class App:
     def _build_tray(self) -> None:
         self.tray = QSystemTrayIcon(theme.app_icon("off"))
         # The actions that stay belong to the tray icon, so rebuilding the menu doesn't delete them.
-        self.tray_toggle = QAction("Подключиться", self.tray)
+        self.tray_toggle = QAction(tr("Подключиться"), self.tray)
         self.tray_toggle.triggered.connect(self.ctl.toggle)
         self.tray_mode = {}
-        for mode, text in (("proxy", "Системный прокси"), ("tun", "TUN")):
+        for mode, text in (("proxy", tr("Системный прокси")), ("tun", "TUN")):
             act = QAction(text, self.tray, checkable=True)
             act.triggered.connect(lambda _=False, m=mode: self._set_mode(m))
             self.tray_mode[mode] = act
-        self.tray_open = QAction("Открыть", self.tray)
+        self.tray_open = QAction(tr("Открыть"), self.tray)
         self.tray_open.triggered.connect(self.show_window)
-        self.tray_quit = QAction("Выход", self.tray)
+        self.tray_quit = QAction(tr("Выход"), self.tray)
         self.tray_quit.triggered.connect(self.quit)
         self.tray_menu = self._tray_submenu(None, "")
         self.tray_menu.aboutToShow.connect(self._fill_tray)
@@ -195,9 +198,9 @@ class App:
             if connected and self.ctl.current_node:
                 text += f"  →  {balancer.plain(self.ctl.current_node)}"
             cur = self._fit(QAction(self._tray_icon_for(srv), text, menu))
-            cur.setToolTip(("Подключено: " if connected else "Выбран: ") + cur.toolTip())
+            cur.setToolTip((tr("Подключено: ") if connected else tr("Выбран: ")) + cur.toolTip())
         else:
-            cur = QAction("Сервер не выбран", menu)
+            cur = QAction(tr("Сервер не выбран"), menu)
         bold = QFont(cur.font())
         bold.setBold(True)
         cur.setFont(bold)
@@ -209,12 +212,12 @@ class App:
 
         recent = self.ctl.recent()
         if recent:
-            sub = self._tray_submenu(menu, "Недавние")
+            sub = self._tray_submenu(menu, tr("Недавние"))
             for r in recent:
                 self._pick_action(sub, r)
         bals = self.ctl.store.balancers
         if bals:
-            sub = self._tray_submenu(menu, "Балансировщики")
+            sub = self._tray_submenu(menu, tr("Балансировщики"))
             # A handful fits a tray menu; the one in use always among them, the rest in the window.
             shown = bals[:self.TRAY_BALANCERS]
             current = self.ctl.store.balancer(self.ctl.settings.selected_server)
@@ -227,7 +230,7 @@ class App:
                 self._pick_action(sub, b, text)
             if len(bals) > len(shown):
                 sub.addSeparator()
-                sub.addAction(f"Все балансировщики ({len(bals)})…", lambda: self._open_at(BALANCERS))
+                sub.addAction(tr("Все балансировщики ({n})…", n=len(bals)), lambda: self._open_at(BALANCERS))
 
         menu.addSeparator()
         for act in self.tray_mode.values():
@@ -245,8 +248,8 @@ class App:
         info, preset, key = win._route_state()
         options = []
         if info is not None:
-            options.append((True, "Умная", "Правила маршрутизации от вашего VPN-провайдера"))
-        options.append((False, "Весь трафик", "Весь трафик, включая российские сайты, идёт через VPN"))
+            options.append((True, tr("Умная"), tr("Правила маршрутизации от вашего VPN-провайдера")))
+        options.append((False, tr("Весь трафик"), tr("Весь трафик, включая российские сайты, идёт через VPN")))
         for value, text, tip in options:
             act = menu.addAction(text, lambda v=value: win._route_changed(v))
             act.setCheckable(True)
@@ -259,7 +262,7 @@ class App:
             act.setCheckable(True)
             act.setChecked(key == "preset")
         elif presets:
-            title = f"Пресет: {preset['name']}" if preset else "Пресеты"
+            title = tr("Пресет: {name}", name=preset['name']) if preset else tr("Пресеты")
             sub = self._tray_submenu(menu, QFontMetrics(theme.font(9.5)).elidedText(title, Qt.ElideRight,
                                                                                     self.TRAY_TEXT_W))
             if preset:
@@ -271,7 +274,7 @@ class App:
                 act.setCheckable(True)
                 act.setChecked(p["id"] == s.route_preset)
             sub.addSeparator()
-            sub.addAction("Настроить пресеты…", lambda: (self.show_window(), win.show_settings("presets")))
+            sub.addAction(tr("Настроить пресеты…"), lambda: (self.show_window(), win.show_settings("presets")))
 
     def _tray_pick(self, server_id: str) -> None:
         """Connect through a server or balancer; the one already in use stays as it is."""
@@ -295,13 +298,13 @@ class App:
     def _on_state(self, state: str) -> None:
         self.tray.setIcon(theme.app_icon("on" if state == "connected" else "off"))
         srv = self.ctl.selected
-        tip = f"{paths.APP_NAME}: {'подключено' if state == 'connected' else 'отключено'}"
+        tip = f"{paths.APP_NAME}: {tr('подключено') if state == 'connected' else tr('отключено')}"
         if srv and state == "connected":
             tip += f"\n{balancer.plain(srv.name)}"
             if self.ctl.current_node:
                 tip += f" → {balancer.plain(self.ctl.current_node)}"
         self.tray.setToolTip(tip[:127])
-        self.tray_toggle.setText("Отключиться" if state == "connected" else "Подключиться")
+        self.tray_toggle.setText(tr("Отключиться") if state == "connected" else tr("Подключиться"))
         self.tray_toggle.setEnabled(state in ("connected", "disconnected"))
         for mode, act in self.tray_mode.items():
             act.setChecked(mode == self.ctl.settings.tunnel_mode)
@@ -324,8 +327,8 @@ class App:
         else:
             # In the tray: say so, and offer the dialog when the window opens.
             self._pending_update = release
-            self.tray.showMessage(paths.APP_NAME, f"Доступна новая версия {release.version}. "
-                                                  f"Откройте Nimbus, чтобы обновиться.",
+            self.tray.showMessage(paths.APP_NAME, tr("Доступна новая версия {version}. Откройте Nimbus, чтобы "
+                                                     "обновиться.", version=release.version),
                                   QSystemTrayIcon.Information, 8000)
 
     def _show_update(self, release) -> None:
@@ -394,10 +397,10 @@ class App:
     # -- elevation -----------------------------------------------------------------------
     def _ask_elevation(self) -> None:
         self.show_window()
-        if not ask(self.win, "Нужны права администратора",
-                   "Режим TUN создаёт виртуальный сетевой адаптер и меняет маршруты — для этого Windows "
-                   "требует права администратора. Перезапустить Nimbus от имени администратора?",
-                   "Перезапустить"):
+        if not ask(self.win, tr("Нужны права администратора"),
+                   tr("Режим TUN создаёт виртуальный сетевой адаптер и меняет маршруты — для этого Windows "
+                      "требует права администратора. Перезапустить Nimbus от имени администратора?"),
+                   tr("Перезапустить")):
             return
         self.ctl.shutdown()
         self.server.close()
@@ -405,7 +408,17 @@ class App:
             self.qt.exit(0)
         else:
             self.server.listen(INSTANCE_KEY)
-            self.win.toaster.show("Запуск от имени администратора отменён.", error=True)
+            self.win.toaster.show(tr("Запуск от имени администратора отменён."), error=True)
+
+    def restart(self) -> None:
+        """Start a fresh copy (e.g. in another language) and quit; a connection comes back."""
+        args = ["--restarted"] + (["--connect"] if self.ctl.state == "connected" else [])
+
+        def go():
+            self.server.close()   # the new copy waits for the single-instance mutex, not the pipe
+            winsys.relaunch(args)
+            self.quit()
+        self.ctl.disconnect(then=go)
 
     def quit(self) -> None:
         self.win.really_quit = True

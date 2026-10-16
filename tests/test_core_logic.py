@@ -15,6 +15,7 @@ from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ.setdefault("NIMBUS_LANG", "ru")   # texts in assertions are the Russian ones
 
 from nimbus import balancer, config_builder, links, paths, subscription  # noqa: E402
 from nimbus.settings import Settings  # noqa: E402
@@ -912,6 +913,68 @@ class DeepLinkTests(unittest.TestCase):
         finally:
             winsys.unregister_url_scheme(scheme)
         self.assertEqual(winsys.url_scheme_command(scheme), "")
+
+
+class I18nTests(unittest.TestCase):
+    @staticmethod
+    def _source_texts():
+        """Every tr("…") text and plural() "one" form in nimbus/."""
+        import ast
+        texts, plurals = set(), set()
+        root = Path(__file__).resolve().parent.parent / "nimbus"
+        for f in root.rglob("*.py"):
+            if "__pycache__" in f.parts:
+                continue
+            for node in ast.walk(ast.parse(f.read_text("utf-8"))):
+                if not isinstance(node, ast.Call):
+                    continue
+                name = getattr(node.func, "id", getattr(node.func, "attr", ""))
+                if name == "tr" and node.args and isinstance(node.args[0], ast.Constant):
+                    ctx = next((k.value.value for k in node.keywords if k.arg == "ctx"), "")
+                    texts.add(f"{ctx}|{node.args[0].value}" if ctx else node.args[0].value)
+                elif name == "plural" and len(node.args) == 4 and isinstance(node.args[1], ast.Constant):
+                    plurals.add(node.args[1].value)
+        return texts, plurals
+
+    def test_english_covers_every_text(self):
+        from nimbus import locale_en
+        texts, plurals = self._source_texts()
+        self.assertGreater(len(texts), 300)
+        self.assertEqual(sorted(texts - set(locale_en.TEXTS)), [], "texts without an English translation")
+        self.assertEqual(sorted(plurals - set(locale_en.PLURALS)), [], "plural forms without English")
+
+    def test_placeholders_match(self):
+        import string
+        from nimbus import locale_en
+
+        def fields(text):
+            return sorted(f for _, f, _, _ in string.Formatter().parse(text) if f is not None)
+        for ru, en in locale_en.TEXTS.items():
+            self.assertEqual(fields(ru), fields(en), ru)
+            self.assertNotRegex(en, "[А-Яа-яЁё]", ru)
+
+    def test_tr_and_plural(self):
+        from nimbus import i18n
+        old = i18n.LANG
+        try:
+            i18n.set_language("ru")
+            self.assertEqual(i18n.tr("Добавлено серверов: {n}", n=3), "Добавлено серверов: 3")
+            self.assertEqual([i18n.plural(n, "сервер", "сервера", "серверов") for n in (1, 2, 5, 11, 21, 112)],
+                             ["сервер", "сервера", "серверов", "серверов", "сервер", "серверов"])
+            i18n.set_language("en")
+            self.assertEqual(i18n.tr("Добавлено серверов: {n}", n=3), "Servers added: 3")
+            self.assertEqual(i18n.tr("Текста нет в словаре"), "Текста нет в словаре")
+            self.assertEqual([i18n.plural(n, "сервер", "сервера", "серверов") for n in (1, 2, 21)],
+                             ["server", "servers", "servers"])
+        finally:
+            i18n.set_language(old)
+
+    def test_language_choice(self):
+        from nimbus import i18n
+        self.assertEqual(i18n.resolve("en"), "en")
+        self.assertEqual(i18n.resolve("ru"), "ru")
+        self.assertIn(i18n.resolve("auto"), i18n.LANGUAGES)
+        self.assertEqual(Settings().language, "auto")
 
 
 if __name__ == "__main__":

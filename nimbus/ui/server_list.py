@@ -13,6 +13,7 @@ from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QTimer, QVariantAn
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QKeySequence, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QAbstractScrollArea, QToolTip
 
+from ..i18n import tr
 from ..store import Server
 from . import flags, icons, theme
 
@@ -94,8 +95,8 @@ class ServerList(QAbstractScrollArea):
         self._press_marked = False          # the last click on a server changed the selection
         self.connected = False
         self.busy = False
-        self.empty_title = "Серверов пока нет"
-        self.empty_hint = "Нажмите «Добавить» или скопируйте ссылку на подписку и нажмите Ctrl+V"
+        self.empty_title = tr("Серверов пока нет")
+        self.empty_hint = tr("Нажмите «Добавить» или скопируйте ссылку на подписку и нажмите Ctrl+V")
         self._expand: dict[str, _Float] = {}
         self._sel = _Float(self, 1.0, 360)
         self._sel_from: float | None = None
@@ -455,19 +456,19 @@ class ServerList(QAbstractScrollArea):
             r, part, _ = self._hit(e.position() if hasattr(e, "position") else e.pos())
             tip = ""
             if r and part == "ping":
-                tip = "Проверить задержку серверов группы" if r.kind == "header" else "Проверить задержку"
+                tip = tr("Проверить задержку серверов группы") if r.kind == "header" else tr("Проверить задержку")
             elif r and part == "refresh":
-                tip = "Обновить подписку"
+                tip = tr("Обновить подписку")
             elif r and part == "share":
-                tip = "Поделиться"
+                tip = tr("Поделиться")
             elif r and part == "add":
-                tip = ("Создать балансировщик" if r.gid == BALANCERS
-                       else "Добавить конфиги в эту группу — текстом или файлом")
+                tip = (tr("Создать балансировщик") if r.gid == BALANCERS
+                       else tr("Добавить конфиги в эту группу — текстом или файлом"))
             elif r and part.startswith("link:"):
                 target = r.info["links"][int(part[5:])][1]
                 tip = "" if target.startswith("action:") else target
             elif r and r.kind == "header" and r.error:
-                tip = f"Не удалось обновить: {r.error}"
+                tip = tr("Не удалось обновить: {error}", error=r.error)
             elif r and r.kind == "server":
                 tip = r.server.name
             QToolTip.showText(e.globalPos(), tip, self.viewport()) if tip else QToolTip.hideText()
@@ -598,7 +599,7 @@ class ServerList(QAbstractScrollArea):
             if r.error:
                 x += fm.horizontalAdvance(str(r.count)) + 12
                 q.setPen(QColor(theme.TEXT))
-                q.drawText(QRectF(x, 0, 200, HEADER_H + 6), Qt.AlignVCenter | Qt.AlignLeft, "· НЕ ОБНОВИЛАСЬ")
+                q.drawText(QRectF(x, 0, 200, HEADER_H + 6), Qt.AlignVCenter | Qt.AlignLeft, tr("· НЕ ОБНОВИЛАСЬ"))
 
         p.drawPixmap(QPointF(34, 0), self._pixmap(("h", r.gid, r.title, r.count, r.error), tw, HEADER_H + 6, paint))
         hot = r.key == self._hover_key
@@ -626,8 +627,8 @@ class ServerList(QAbstractScrollArea):
                 q.drawText(br, Qt.TextWordWrap, ann)
                 y += used.height() + 14
             x = PAD + 2
-            for cap, val, frac in (("Осталось", info.get("left", ""), None),
-                                   ("Трафик", info.get("traffic", ""), info.get("frac"))):
+            for cap, val, frac in ((tr("Осталось"), info.get("left", ""), None),
+                                   (tr("Трафик"), info.get("traffic", ""), info.get("frac"))):
                 if not val:
                     continue
                 q.setFont(self._f_cap)
@@ -696,7 +697,7 @@ class ServerList(QAbstractScrollArea):
             q.drawText(QRectF(tx, 9, avail, 22), Qt.AlignVCenter | Qt.AlignLeft,
                        fm.elidedText(r.name, Qt.ElideRight, avail))
             q.setFont(self._f_detail)
-            detail = ("подключено  ·  " + r.detail) if connected else r.detail
+            detail = (tr("подключено  ·  ") + r.detail) if connected else r.detail
             q.setPen(QColor(theme.TEXT_2 if connected else theme.MUTED))
             q.drawText(QRectF(tx, 30, avail, 18), Qt.AlignVCenter | Qt.AlignLeft,
                        QFontMetricsF(self._f_detail).elidedText(detail, Qt.ElideRight, avail))
@@ -731,14 +732,14 @@ class ServerList(QAbstractScrollArea):
             p.setFont(self._f_unit)
             p.setPen(QColor(theme.MUTED))
             p.drawText(QRectF(r.x(), 0, bars_x - r.x() - 10, r.height()), Qt.AlignVCenter | Qt.AlignRight,
-                       "нет ответа")
+                       tr("нет ответа"))
         else:
             level = 4 if lat < 150 else 3 if lat < 300 else 2 if lat < 700 else 1
-            unit_w = QFontMetricsF(self._f_unit).horizontalAdvance("мс")
+            unit_w = QFontMetricsF(self._f_unit).horizontalAdvance(tr("мс"))
             p.setFont(self._f_unit)
             p.setPen(QColor(theme.MUTED))
             ux = bars_x - 10 - unit_w
-            p.drawText(QRectF(ux, 0, unit_w, r.height() + 1), Qt.AlignVCenter | Qt.AlignLeft, "мс")
+            p.drawText(QRectF(ux, 0, unit_w, r.height() + 1), Qt.AlignVCenter | Qt.AlignLeft, tr("мс"))
             p.setFont(self._f_ms)
             p.setPen(QColor(theme.TEXT))
             p.drawText(QRectF(r.x(), 0, ux - r.x() - 4, r.height()), Qt.AlignVCenter | Qt.AlignRight, str(lat))

@@ -143,7 +143,8 @@ def main() -> None:
     core.mkdir(exist_ok=True)
     for f in CORE_FILES:
         shutil.copy2(VENDOR / f, core / f)
-    shutil.copy2(ROOT / "README.md", app_dir / "README.md")
+    for readme in ("README.md", "README.en.md"):
+        shutil.copy2(ROOT / readme, app_dir / readme)
 
     archive = DIST / f"Nimbus-{VERSION}-portable.zip"
     make_portable_zip(app_dir, archive)

@@ -7,6 +7,7 @@ import time
 from dataclasses import asdict
 from typing import Callable
 
+from .i18n import plural, tr
 from .lazy import httpx
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -29,9 +30,9 @@ CONFIG_KEYS = {
 }
 
 
-ICS_WARNING = ("TUN не работает, пока включены «Мобильный хот-спот» или общий доступ к интернету (ICS): "
-               "Windows заворачивает соединения ядра обратно в туннель. Выключите хот-спот или в его "
-               "настройках раздавайте подключение Nimbus.")
+ICS_WARNING = (tr("TUN не работает, пока включены «Мобильный хот-спот» или общий доступ к интернету (ICS): "
+                  "Windows заворачивает соединения ядра обратно в туннель. Выключите хот-спот или в его "
+                  "настройках раздавайте подключение Nimbus."))
 
 
 class _Bridge(QObject):
@@ -192,7 +193,7 @@ class Controller(QObject):
         server = self.selected
         if server is None:
             if not self.store.servers:
-                self.message.emit("error", "Сначала добавьте подписку или сервер.")
+                self.message.emit("error", tr("Сначала добавьте подписку или сервер."))
                 return
             server = self.store.servers[0]
             self.settings.selected_server = server.id
@@ -205,15 +206,15 @@ class Controller(QObject):
         api_port = free_port() if bal and bal.mode == "stable" else 0
         self._api_port = api_port
         if bal and not self._members:
-            self.message.emit("error", f"В балансировщике «{bal.name}» нет серверов: добавьте их через "
-                                       f"правый клик → «Изменить…».")
+            self.message.emit("error", tr("В балансировщике «{name}» нет серверов: добавьте их через правый клик → "
+                                          "«Изменить…».", name=bal.name))
             return
         if self.settings.tunnel_mode == "tun" and not winsys.is_admin():
             self.need_admin.emit()
             return
         for exe in (paths.XRAY_EXE, paths.SINGBOX_EXE if self.settings.tunnel_mode == "tun" else None):
             if exe and not exe.exists():
-                self.message.emit("error", f"Не найдено ядро: {exe}")
+                self.message.emit("error", tr("Не найдено ядро: {exe}", exe=exe))
                 return
 
         self._set_state("connecting")
@@ -224,7 +225,7 @@ class Controller(QObject):
             if s.tunnel_mode == "tun":
                 found = winsys.default_egress(config_builder.TUN_NAME)
                 if found is None:
-                    raise CoreError("нет активного подключения к интернету")
+                    raise CoreError(tr("нет активного подключения к интернету"))
                 egress, forwarding = found
                 if forwarding:
                     # Windows ignores the adapter binding on a forwarding adapter.
@@ -246,7 +247,7 @@ class Controller(QObject):
         def fail(err):
             self._set_state("disconnected")
             text = str(err)
-            self.message.emit("error", f"Не удалось подключиться: {text}")
+            self.message.emit("error", tr("Не удалось подключиться: {text}", text=text))
 
         self.run_async(work, done, fail)
 
@@ -291,7 +292,8 @@ class Controller(QObject):
 
         def done(found):
             if found and found[0] != bound and self.state == "connected" and self.core.egress == bound:
-                self.message.emit("info", f"Сеть сменилась ({bound} → {found[0]}), переподключение…")
+                self.message.emit("info", tr("Сеть сменилась ({bound} → {new}), переподключение…",
+                                             bound=bound, new=found[0]))
                 self.reconnect()
         self.run_async(lambda: winsys.default_egress(config_builder.TUN_NAME), done, fail=lambda e: None)
 
@@ -300,7 +302,7 @@ class Controller(QObject):
         if self.state != "connected":
             return
         self._speed_timer.stop()
-        last = self.core.tail[-1] if self.core.tail else f"код {code}"
+        last = self.core.tail[-1] if self.core.tail else tr("код {code}", code=code)
         # Kill switch (proxy mode): leave the system proxy pointing at the dead port so
         # nothing leaks past it. It's lifted on reconnect, on quit or when the switch is turned off.
         # In TUN mode the other process goes too: sing-box without Xray is a tunnel to nowhere.
@@ -309,13 +311,13 @@ class Controller(QObject):
         self.speed.emit(0, 0)
         if self._reconnects < 3:
             self._reconnects += 1
-            self.message.emit("error", f"Ядро остановилось ({last}). Переподключение…")
+            self.message.emit("error", tr("Ядро остановилось ({last}). Переподключение…", last=last))
             QTimer.singleShot(1500, self.connect)
         elif self.core.uses_sysproxy:
-            self.message.emit("error", "Ядро упало несколько раз подряд. Kill switch держит интернет "
-                                       "заблокированным — нажмите «Подключиться» или выйдите из программы.")
+            self.message.emit("error", tr("Ядро упало несколько раз подряд. Kill switch держит интернет "
+                                          "заблокированным — нажмите «Подключиться» или выйдите из программы."))
         else:
-            self.message.emit("error", f"Ядро упало несколько раз подряд: {last}")
+            self.message.emit("error", tr("Ядро упало несколько раз подряд: {last}", last=last))
 
     def _poll_speed(self) -> None:
         def done(res):
@@ -341,7 +343,7 @@ class Controller(QObject):
 
             def failed(err):
                 self._pinning = False
-                self.log.emit(f"[nimbus] не удалось закрепить узел {target}: {err}")
+                self.log.emit(tr("[nimbus] не удалось закрепить узел {target}: {err}", target=target, err=err))
             self.run_async(lambda: balancer.pin(port, target), pinned, failed)
         else:
             target = balancer.fastest(obs)
@@ -357,10 +359,11 @@ class Controller(QObject):
             return
         delays = balancer.alive(obs)
         if old not in delays:
-            why = f"{balancer.plain(before.name)} не отвечает"
+            why = tr("{name} не отвечает", name=balancer.plain(before.name))
         else:
-            why = f"на {delays[old] - delays.get(new, 0)} мс быстрее, чем {balancer.plain(before.name)}"
-        name = self._balancer.name if self._balancer else "Балансировщик"
+            why = tr("на {ms} мс быстрее, чем {name}", ms=delays[old] - delays.get(new, 0),
+                     name=balancer.plain(before.name))
+        name = self._balancer.name if self._balancer else tr("Балансировщик")
         self.message.emit("info", f"«{name}» → {balancer.plain(node.name)}: {why}")
 
     def _set_node(self, name: str) -> None:
@@ -397,7 +400,7 @@ class Controller(QObject):
             try:
                 winsys.set_autostart(new.autostart, paths.APP_NAME)
             except OSError as e:
-                self.message.emit("error", f"Автозапуск: {e}")
+                self.message.emit("error", tr("Автозапуск: {e}", e=e))
         if changed & CONFIG_KEYS and self.state == "connected":
             if new.tunnel_mode == "tun" and not winsys.is_admin():
                 self.disconnect()
@@ -445,7 +448,10 @@ class Controller(QObject):
             try:
                 updater.install(prepared, kind, os.getpid(), connect)
             except Exception as e:
-                failed(e) if failed else self.message.emit("error", f"Не удалось запустить обновление: {e}")
+                if failed:
+                    failed(e)
+                else:
+                    self.message.emit("error", tr("Не удалось запустить обновление: {e}", e=e))
                 return
             quit_app()
         self.disconnect(then=go)
@@ -459,7 +465,7 @@ class Controller(QObject):
 
     def add_subscription(self, url: str) -> None:
         sub = Subscription(id=new_id(), url=url.strip())
-        self.busy.emit("Загрузка подписки…")
+        self.busy.emit(tr("Загрузка подписки…"))
 
         def done(servers):
             self.store.subscriptions.append(sub)
@@ -468,11 +474,13 @@ class Controller(QObject):
             self.store.save()
             self.busy.emit("")
             self.servers_changed.emit()
-            self.message.emit("info", f"Добавлено: {sub.title} — {len(servers)} серверов")
+            n = len(servers)
+            self.message.emit("info", tr("Добавлено: {title} — {n} {servers}", title=sub.title, n=n,
+                                         servers=plural(n, "сервер", "сервера", "серверов")))
 
         def fail(err):
             self.busy.emit("")
-            self.message.emit("error", f"Не удалось загрузить подписку: {err}")
+            self.message.emit("error", tr("Не удалось загрузить подписку: {err}", err=err))
 
         proxy, hwid = self._proxy_for_downloads(), self._hwid()
         self.run_async(lambda: subscription.fetch(sub, self.settings.sub_user_agent, proxy, *hwid), done, fail)
@@ -492,7 +500,7 @@ class Controller(QObject):
             subs.append(sub)
         if not subs:
             return
-        self.busy.emit("Обновление подписок…")
+        self.busy.emit(tr("Обновление подписок…"))
         ua, proxy, hwid = self.settings.sub_user_agent, self._proxy_for_downloads(), self._hwid()
 
         def work():
@@ -515,9 +523,9 @@ class Controller(QObject):
             self.servers_changed.emit()
             failed = [s.title for s in subs if s.error]
             if failed:
-                self.message.emit("error", "Не обновились: " + ", ".join(failed))
+                self.message.emit("error", tr("Не обновились: ") + ", ".join(failed))
             elif not only_due:
-                self.message.emit("info", "Подписки обновлены")
+                self.message.emit("info", tr("Подписки обновлены"))
 
         self.run_async(work, done)
 
@@ -529,11 +537,11 @@ class Controller(QObject):
             self.store.save()
             self.servers_changed.emit()
         if errors and not servers:
-            self.message.emit("error", "Не удалось распознать: " + "; ".join(errors[:3]))
+            self.message.emit("error", tr("Не удалось распознать: ") + "; ".join(errors[:3]))
         return len(servers)
 
     def add_group(self, name: str) -> Group:
-        group = Group(id=new_id(), name=name.strip() or "Новая группа")
+        group = Group(id=new_id(), name=name.strip() or tr("Новая группа"))
         self.store.groups.append(group)
         self.store.save()
         self.servers_changed.emit()
@@ -613,7 +621,7 @@ class Controller(QObject):
 
     def new_balancer(self, name: str, server_ids: list[str], sub_ids: list[str], interval: int = 30,
                      mode: str = "stable") -> Balancer:
-        bal = Balancer(id=new_id(), name=name.strip() or "Балансировщик", server_ids=list(server_ids),
+        bal = Balancer(id=new_id(), name=name.strip() or tr("Балансировщик"), server_ids=list(server_ids),
                        sub_ids=list(sub_ids), interval=interval, mode=mode)
         self.save_balancer(bal)
         return bal
@@ -647,7 +655,7 @@ class Controller(QObject):
         self._ping_runs += 1
         name = f"ping-{self._ping_runs}"
         ids = {s.id for s in servers}
-        self.busy.emit("Проверка задержки…")
+        self.busy.emit(tr("Проверка задержки…"))
         url, timeout = self.settings.ping_url, self.settings.ping_timeout
 
         def finished() -> None:
@@ -681,14 +689,14 @@ class Controller(QObject):
 
         def fail(err):
             finished()
-            self.message.emit("error", f"Пинг: {err}")
+            self.message.emit("error", tr("Пинг: {err}", err=err))
 
         self.run_async(lambda: ping.ping_servers(servers, url, timeout,
                                                  on_result=lambda sid, ms: self._ui(one, (sid, ms)), name=name),
                        done, fail)
 
     def update_geo(self) -> None:
-        self.busy.emit("Загрузка geoip/geosite…")
+        self.busy.emit(tr("Загрузка geoip/geosite…"))
         proxy = self._proxy_for_downloads()
 
         def work():
@@ -696,17 +704,17 @@ class Controller(QObject):
                 r = httpx.get(url, follow_redirects=True, timeout=120, proxy=proxy)
                 r.raise_for_status()
                 if len(r.content) < 100_000:
-                    raise ValueError(f"{name}: подозрительно маленький файл")
+                    raise ValueError(tr("{name}: подозрительно маленький файл", name=name))
                 tmp = paths.GEO_DIR / (name + ".tmp")
                 tmp.write_bytes(r.content)
                 tmp.replace(paths.GEO_DIR / name)
 
         def done(_):
             self.busy.emit("")
-            self.message.emit("info", "Geo-файлы обновлены. Применятся при следующем подключении.")
+            self.message.emit("info", tr("Geo-файлы обновлены. Применятся при следующем подключении."))
 
         def fail(err):
             self.busy.emit("")
-            self.message.emit("error", f"Не удалось обновить geo-файлы: {err}")
+            self.message.emit("error", tr("Не удалось обновить geo-файлы: {err}", err=err))
 
         self.run_async(work, done, fail)

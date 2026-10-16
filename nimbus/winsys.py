@@ -300,6 +300,16 @@ def relaunch_as_admin(extra_args: list[str]) -> bool:
     return rc > 32
 
 
+def relaunch(extra_args: list[str]) -> None:
+    """Start another copy of the app with the same rights as this one."""
+    if getattr(sys, "frozen", False):
+        args = [sys.executable, *extra_args]
+    else:
+        pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+        args = [pythonw, os.path.abspath(sys.argv[0]), *extra_args]
+    subprocess.Popen(args, close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
+
+
 def _launch_command() -> str:
     if getattr(sys, "frozen", False):
         return subprocess.list2cmdline([sys.executable, "--autostart"])

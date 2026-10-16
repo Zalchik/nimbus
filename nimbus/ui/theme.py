@@ -12,6 +12,7 @@ import weakref
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPainterPath, QPixmap
 
+from ..i18n import tr
 from .. import paths
 
 PALETTES = {
@@ -340,17 +341,19 @@ def app_icon(state: str = "brand") -> QIcon:
 
 
 def human_bytes(n: float) -> str:
-    for unit in ("Б", "КБ", "МБ", "ГБ", "ТБ"):
-        if abs(n) < 1024 or unit == "ТБ":
-            return f"{n:.0f} {unit}" if unit == "Б" else f"{n:.1f} {unit}"
+    units = (tr("Б"), tr("КБ"), tr("МБ"), tr("ГБ"), tr("ТБ"))
+    for i, unit in enumerate(units):
+        if abs(n) < 1024 or i == len(units) - 1:
+            return f"{n:.0f} {unit}" if i == 0 else f"{n:.1f} {unit}"
         n /= 1024
-    return f"{n:.1f} ТБ"
+    return ""
 
 
 def human_speed(n: float) -> tuple[str, str]:
     """(value, unit) for a bytes/s rate, e.g. ("1.4", "МБ/с")."""
-    for unit in ("Б/с", "КБ/с", "МБ/с", "ГБ/с"):
-        if n < 1000 or unit == "ГБ/с":
-            return (f"{n:.0f}" if unit == "Б/с" or n >= 100 else f"{n:.1f}"), unit
+    units = (tr("Б/с"), tr("КБ/с"), tr("МБ/с"), tr("ГБ/с"))
+    for i, unit in enumerate(units):
+        if n < 1000 or i == len(units) - 1:
+            return (f"{n:.0f}" if i == 0 or n >= 100 else f"{n:.1f}"), unit
         n /= 1024
-    return f"{n:.1f}", "ГБ/с"
+    return "", ""

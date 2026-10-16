@@ -1,13 +1,13 @@
 """«Найдено обновление»: what's new, then download, check and install the new version."""
 from __future__ import annotations
 
-import time
-
 from PySide6.QtCore import QSize, Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QTextCharFormat, QTextCursor, QTextDocument, \
     QTextFormat
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QPushButton, QTextBrowser
 
+from .. import i18n
+from ..i18n import tr
 from .. import paths, updater
 from . import theme
 from .dialogs import Dialog, _chevron
@@ -43,7 +43,7 @@ def _tone_down(doc: QTextDocument) -> None:
 
 class UpdateDialog(Dialog):
     def __init__(self, parent, ctl, release: updater.Release, quit_app):
-        super().__init__(parent, "Обновление", "Найдено обновление", width=560)
+        super().__init__(parent, tr("Обновление"), tr("Найдено обновление"), width=560)
         self.ctl, self.release, self.quit_app = ctl, release, quit_app
         self.kind = updater.install_kind()
         self._stop = None          # set to cancel a download
@@ -57,7 +57,7 @@ class UpdateDialog(Dialog):
                          f'<b>{release.version}</b>')
         self.lay.addWidget(versions)
         if release.published:
-            when = QLabel("Выпущена " + time.strftime("%d.%m.%Y", time.localtime(release.published)),
+            when = QLabel(tr("Выпущена {date}", date=i18n.date(release.published)),
                           objectName="hint")
             self.lay.addWidget(when)
 
@@ -67,7 +67,7 @@ class UpdateDialog(Dialog):
         _tone_down(self.notes.document())
         self.notes.setMinimumHeight(220)
         self.notes.hide()
-        self.toggle = QPushButton("Что нового", objectName="disclosure")
+        self.toggle = QPushButton(tr("Что нового"), objectName="disclosure")
         self.toggle.setIcon(_chevron(False))
         self.toggle.setIconSize(QSize(16, 16))
         self.toggle.setCursor(Qt.PointingHandCursor)
@@ -89,17 +89,17 @@ class UpdateDialog(Dialog):
 
         row = QHBoxLayout()
         row.addStretch()
-        self.never = QPushButton("Никогда")
-        self.never.setToolTip("Не предлагать эту версию. О следующей Nimbus сообщит снова")
+        self.never = QPushButton(tr("Никогда"))
+        self.never.setToolTip(tr("Не предлагать эту версию. О следующей Nimbus сообщит снова"))
         self.never.clicked.connect(self._skip)
-        self.later = QPushButton("Позже")
-        self.later.setToolTip("Напомнить при следующей проверке")
+        self.later = QPushButton(tr("Позже"))
+        self.later.setToolTip(tr("Напомнить при следующей проверке"))
         self.later.clicked.connect(self.reject)
-        self.download = QPushButton("Скачать", objectName="primary")
+        self.download = QPushButton(tr("Скачать"), objectName="primary")
         self.download.setDefault(True)
         self.download.clicked.connect(self._download)
         if not self.kind:
-            self.download.setToolTip("Открыть страницу релиза: эта копия запущена из исходников")
+            self.download.setToolTip(tr("Открыть страницу релиза: эта копия запущена из исходников"))
         for b in (self.never, self.later, self.download):
             row.addWidget(b)
         self.lay.addSpacing(8)
@@ -127,12 +127,12 @@ class UpdateDialog(Dialog):
             return
         self._busy = True
         self.download.setEnabled(False)
-        self.download.setText("Загрузка…")
+        self.download.setText(tr("Загрузка…"))
         self.never.hide()
-        self.later.setText("Отмена")
+        self.later.setText(tr("Отмена"))
         self.progress.setRange(0, 0)
         self.progress.show()
-        self._set_status("Подключаемся к GitHub…")
+        self._set_status(tr("Подключаемся к GitHub…"))
         self._stop = self.ctl.download_update(self.release, self.kind, self._on_progress, self._on_ready,
                                               self._on_failed)
 
@@ -149,9 +149,10 @@ class UpdateDialog(Dialog):
             self.progress.setRange(0, 1000)
             self.progress.setValue(int(done * 1000 / total))
         if total and done >= total:
-            self._set_status("Проверяем файл…" if self.kind == "setup" else "Проверяем и распаковываем…")
+            self._set_status(tr("Проверяем файл…") if self.kind == "setup" else tr("Проверяем и распаковываем…"))
         else:
-            self._set_status(f"{theme.human_bytes(done)} из {theme.human_bytes(total)}" if total
+            self._set_status(tr("{used} из {total}", used=theme.human_bytes(done), total=theme.human_bytes(total))
+                             if total
                              else theme.human_bytes(done))
 
     def _on_ready(self, prepared) -> None:
@@ -159,15 +160,15 @@ class UpdateDialog(Dialog):
             return
         self.progress.setRange(0, 0)
         self.later.setEnabled(False)
-        self.download.setText("Установка…")
-        self._set_status("Отключаемся и перезапускаем Nimbus с новой версией…")
+        self.download.setText(tr("Установка…"))
+        self._set_status(tr("Отключаемся и перезапускаем Nimbus с новой версией…"))
         self.ctl.install_update(prepared, self.kind, self.quit_app, self._on_install_failed)
 
     def _on_install_failed(self, err) -> None:
         self._busy = True
         self._on_failed(err)
         self.later.setEnabled(True)
-        self._set_status(f"Не удалось запустить обновление: {err}", error=True)
+        self._set_status(tr("Не удалось запустить обновление: {err}", err=err), error=True)
 
     def _on_failed(self, err) -> None:
         if not self._busy:
@@ -176,11 +177,11 @@ class UpdateDialog(Dialog):
         self._stop = None
         self.progress.hide()
         self.download.setEnabled(True)
-        self.download.setText("Повторить")
+        self.download.setText(tr("Повторить"))
         self.never.show()
-        self.later.setText("Позже")
+        self.later.setText(tr("Позже"))
         if not isinstance(err, updater.Cancelled):
-            self._set_status(f"Не удалось скачать обновление: {err}", error=True)
+            self._set_status(tr("Не удалось скачать обновление: {err}", err=err), error=True)
 
     def reject(self) -> None:
         if self._stop is not None:

@@ -12,6 +12,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QAbstractButton, QGraphicsOpacityEffect, QLabel, QSizePolicy, QWidget
 
+from ..i18n import tr
 from . import icons, theme
 
 
@@ -460,7 +461,7 @@ class ThemeSwitch(QAbstractButton):
         self.toggled.connect(self._on_toggled)
 
     def _tip(self) -> None:
-        self.setToolTip("Включить светлую тему" if not self.isChecked() else "Включить тёмную тему")
+        self.setToolTip(tr("Включить светлую тему") if not self.isChecked() else tr("Включить тёмную тему"))
 
     def set_dark(self, dark: bool) -> None:
         self.blockSignals(True)
@@ -636,7 +637,7 @@ class Toast(QWidget):
         self.label.setWordWrap(True)
         self.label.setFont(theme.font(9, QFont.Medium))
         theme.styled(self.label, lambda: f"color: {theme.TEXT};")
-        self.title = QLabel("Ошибка" if error else "Готово", self)
+        self.title = QLabel(tr("Ошибка") if error else tr("Готово"), self)
         self.title.setFont(theme.font(7.2, QFont.DemiBold, spacing=1.4))
         theme.styled(self.title, lambda: f"color: {theme.MUTED};")
         self.title.setText(self.title.text().upper())

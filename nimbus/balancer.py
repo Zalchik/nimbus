@@ -11,12 +11,13 @@ import copy
 import re
 import subprocess
 
+from .i18n import tr
 from . import config_builder, paths, winsys
 from .config_builder import NON_PROXY
 from .settings import Settings
 from .store import Balancer, Server, Store
 
-MODES = {"stable": "Стабильный", "fastest": "Самый быстрый"}
+MODES = {"stable": tr("Стабильный"), "fastest": tr("Самый быстрый")}
 # Stable mode moves to another node only when it's faster by both of these: small gains aren't
 # worth a new exit IP (sites log you out, ask for captchas), and delays jitter by tens of ms.
 MIN_GAIN_MS = 50
@@ -196,7 +197,7 @@ def pin(port: int, tag: str) -> None:
                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
                        stdin=subprocess.DEVNULL, creationflags=winsys.NO_WINDOW)
     if r.returncode != 0:
-        raise RuntimeError((r.stdout + r.stderr).strip() or f"код {r.returncode}")
+        raise RuntimeError((r.stdout + r.stderr).strip() or tr("код {returncode}", returncode=r.returncode))
 
 
 _FLAG = re.compile("[\U0001F1E6-\U0001F1FF]")

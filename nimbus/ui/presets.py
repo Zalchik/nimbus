@@ -12,7 +12,8 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
-from .. import apps
+from .. import apps, i18n
+from ..i18n import tr
 from ..config_builder import site_entry
 from ..store import new_id
 from . import icons, theme
@@ -20,19 +21,22 @@ from .dialogs import Dialog, ask
 from .widgets import Segmented, Spinner, caption
 
 MODE_TEXT = {
-    "bypass": "Отмеченные программы и сайты работают напрямую, без VPN. Всё остальное идёт через VPN.",
-    "vpn": "Через VPN идут только отмеченные программы и сайты. Всё остальное работает напрямую.",
+    "bypass": tr("Отмеченные программы и сайты работают напрямую, без VPN. Всё остальное идёт через VPN."),
+    "vpn": tr("Через VPN идут только отмеченные программы и сайты. Всё остальное работает напрямую."),
 }
-PROXY_NOTE = ("Программы различаются в любом режиме, но в режиме «Системный прокси» через Nimbus проходят только "
-              "те, что используют системный прокси: браузеры, Telegram, Discord и т.п. Для игр включите TUN.")
+PROXY_NOTE = (tr("Программы различаются в любом режиме, но в режиме «Системный прокси» через Nimbus проходят только "
+                 "те, что используют системный прокси: браузеры, Telegram, Discord и т.п. Для игр включите TUN."))
 
 
 def plural(n: int, one: str, few: str, many: str) -> str:
-    if n % 10 == 1 and n % 100 != 11:
-        return f"{n} {one}"
-    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        return f"{n} {few}"
-    return f"{n} {many}"
+    """"5 программ" / "5 programs"."""
+    return f"{n} {i18n.plural(n, one, few, many)}"
+
+
+def decimal(x: float) -> str:
+    """One decimal, with the decimal comma in Russian."""
+    text = f"{x:.1f}"
+    return text.replace(".", ",") if i18n.LANG == "ru" else text
 
 
 def describe(preset: dict) -> str:
@@ -44,7 +48,7 @@ def describe(preset: dict) -> str:
         parts.append(plural(n_apps, "программа", "программы", "программ"))
     if n_sites:
         parts.append(plural(n_sites, "сайт", "сайта", "сайтов"))
-    return " и ".join(parts) or "пусто"
+    return tr(" и ").join(parts) or tr("пусто")
 
 
 class _Scanner(QObject):
@@ -77,7 +81,8 @@ class PresetDialog(Dialog):
         new = preset is None
         self.preset = copy.deepcopy(preset) if preset else {
             "id": new_id(), "name": "", "mode": "bypass", "provider": True, "apps": [], "sites": []}
-        super().__init__(parent, "Пресет маршрутизации", "Новый пресет" if new else "Пресет маршрутизации", "", 1000)
+        super().__init__(parent, tr("Пресет маршрутизации"),
+                         tr("Новый пресет") if new else tr("Пресет маршрутизации"), "", 1000)
         self.resize(1000, 680)
         self._taken = taken or set()
         self._icons = QFileIconProvider()
@@ -91,11 +96,11 @@ class PresetDialog(Dialog):
 
         top = QHBoxLayout()
         top.setSpacing(12)
-        self.name = QLineEdit(self.preset["name"], placeholderText="Название, например «Игры без VPN»")
+        self.name = QLineEdit(self.preset["name"], placeholderText=tr("Название, например «Игры без VPN»"))
         self.name.setFixedHeight(36)
         top.addWidget(self.name, 1)
-        self.mode = Segmented([("bypass", "В обход VPN", MODE_TEXT["bypass"]),
-                               ("vpn", "Только через VPN", MODE_TEXT["vpn"])],
+        self.mode = Segmented([("bypass", tr("В обход VPN"), MODE_TEXT["bypass"]),
+                               ("vpn", tr("Только через VPN"), MODE_TEXT["vpn"])],
                               self.preset.get("mode", "bypass"), stretch=False, height=36)
         self.mode.changed.connect(self._sync_mode)
         top.addWidget(self.mode)
@@ -103,10 +108,10 @@ class PresetDialog(Dialog):
         self.mode_text = QLabel(objectName="hint")
         self.mode_text.setWordWrap(True)
         self.lay.addWidget(self.mode_text)
-        self.provider = QCheckBox("Вместе с правилами провайдера (Умная*)")
+        self.provider = QCheckBox(tr("Вместе с правилами провайдера (Умная*)"))
         self.provider.setChecked(self.preset.get("provider", True))
-        self.provider.setToolTip("Если в конфиге есть правила маршрутизации от VPN-провайдера, они продолжают "
-                                 "работать вместе с пресетом: например, российские сайты тоже открываются без VPN.")
+        self.provider.setToolTip(tr("Если в конфиге есть правила маршрутизации от VPN-провайдера, они продолжают "
+                                    "работать вместе с пресетом: например, российские сайты тоже открываются без VPN."))
         self.lay.addWidget(self.provider)
         self.lay.addSpacing(6)
 
@@ -122,7 +127,7 @@ class PresetDialog(Dialog):
         self.error.setStyleSheet(f"color: {theme.TEXT};")
         self.error.hide()
         self.lay.addWidget(self.error)
-        self.buttons("Сохранить")
+        self.buttons(tr("Сохранить"))
         self._sync_mode(self.mode.current)
 
         self.scanner = _Scanner()
@@ -137,9 +142,10 @@ class PresetDialog(Dialog):
         col.setSpacing(8)
         head = QHBoxLayout()
         head.setSpacing(14)
-        head.addWidget(caption("Программы"))
-        self.view = Segmented([("all", "Все", "Установленные программы и игры"),
-                               ("running", "Запущенные", "Программы, которые работают сейчас; с окном — сверху")],
+        head.addWidget(caption(tr("Программы")))
+        self.view = Segmented([("all", tr("Все"), tr("Установленные программы и игры")),
+                               ("running", tr("Запущенные"),
+                                tr("Программы, которые работают сейчас; с окном — сверху"))],
                               "all", stretch=False, height=30, pt=8.4)
         self.view.changed.connect(self._view_changed)
         head.addWidget(self.view)
@@ -147,7 +153,7 @@ class PresetDialog(Dialog):
         self.count = QLabel(objectName="hint")
         head.addWidget(self.count)
         col.addLayout(head)
-        self.search = QLineEdit(objectName="search", placeholderText="Поиск программы")
+        self.search = QLineEdit(objectName="search", placeholderText=tr("Поиск программы"))
         self.search.addAction(icons.icon("search", theme.MUTED, 16), QLineEdit.LeadingPosition)
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._filter)
@@ -166,12 +172,12 @@ class PresetDialog(Dialog):
         status.addWidget(self.status, 1)
         col.addLayout(status)
         buttons = QHBoxLayout()
-        for text, slot in (("Добавить файл…", self._add_file), ("Добавить папку…", self._add_folder)):
+        for text, slot in ((tr("Добавить файл…"), self._add_file), (tr("Добавить папку…"), self._add_folder)):
             b = QPushButton(text)
             b.clicked.connect(slot)
             buttons.addWidget(b)
         buttons.addStretch()
-        self.rescan = QPushButton("Искать заново")
+        self.rescan = QPushButton(tr("Искать заново"))
         self.rescan.clicked.connect(self._refresh)
         buttons.addWidget(self.rescan)
         col.addLayout(buttons)
@@ -180,21 +186,21 @@ class PresetDialog(Dialog):
     def _sites_column(self) -> QVBoxLayout:
         col = QVBoxLayout()
         col.setSpacing(8)
-        col.addWidget(caption("Сайты и IP"))
+        col.addWidget(caption(tr("Сайты и IP")))
         self.sites = QPlainTextEdit("\n".join(self.preset.get("sites", [])))
-        self.sites.setPlaceholderText("Например:\n\nyoutube.com\ndiscord.gg\n*.steampowered.com\n91.108.4.0/22\ngeosite:twitch\n"
-                                      "geoip:ru")
+        self.sites.setPlaceholderText(tr("Например:") + "\n\nyoutube.com\ndiscord.gg\n*.steampowered.com\n"
+                                                        "91.108.4.0/22\ngeosite:twitch\ngeoip:ru")
         self.sites.setFont(theme.font(9.5, mono=True))
         self.sites.textChanged.connect(self._sync_count)
         col.addWidget(self.sites, 1)
-        hint = QLabel("По одному в строке. Домен включает все поддомены. Можно IP и подсети, а также готовые "
-                      "списки geosite:… и geoip:… (например, geosite:youtube, geoip:ru).", objectName="hint")
+        hint = QLabel(tr("По одному в строке. Домен включает все поддомены. Можно IP и подсети, а также готовые "
+                         "списки geosite:… и geoip:… (например, geosite:youtube, geoip:ru)."), objectName="hint")
         hint.setWordWrap(True)
         col.addWidget(hint)
         quick = QHBoxLayout()
         quick.setSpacing(8)
-        for text, lines in (("+ Российские сайты", ["geosite:category-ru", "geoip:ru"]),
-                            ("+ Локальная сеть", ["geoip:private"])):
+        for text, lines in ((tr("+ Российские сайты"), ["geosite:category-ru", "geoip:ru"]),
+                            (tr("+ Локальная сеть"), ["geoip:private"])):
             b = QPushButton(text)
             b.clicked.connect(lambda _=False, ls=lines: self._add_sites(ls))
             quick.addWidget(b)
@@ -214,7 +220,7 @@ class PresetDialog(Dialog):
             self._start_scan(True)
 
     def _view_changed(self, view) -> None:
-        self.rescan.setText("Обновить" if view == "running" else "Искать заново")
+        self.rescan.setText(tr("Обновить") if view == "running" else tr("Искать заново"))
         if view == "running":
             self._load_running()
         elif self._found:
@@ -227,14 +233,15 @@ class PresetDialog(Dialog):
         self._fill(self._running)
         self.spinner.hide()
         self.rescan.setEnabled(True)
-        windows = sum(1 for a in self._running if a.source != "в фоне")
-        self.status.setText(f"Запущено {plural(len(self._running), 'программа', 'программы', 'программ')}, "
-                            f"с окном — {windows}. Нет нужной — запустите её и нажмите «Обновить».")
+        windows = sum(1 for a in self._running if a.source != tr("в фоне"))
+        self.status.setText(tr("Запущено {programs}, с окном — {windows}. Нет нужной — запустите её и нажмите "
+                               "«Обновить».", programs=plural(len(self._running), "программа", "программы", "программ"),
+                               windows=windows))
 
     def _start_scan(self, force: bool) -> None:
         self.rescan.setEnabled(False)
         self.spinner.show()
-        self.status.setText("Ищем установленные программы…")
+        self.status.setText(tr("Ищем установленные программы…"))
         self.scanner.start(force)
 
     def _on_found(self, found: list, took: float) -> None:
@@ -244,14 +251,15 @@ class PresetDialog(Dialog):
         self._fill(found)
         self.spinner.hide()
         self.rescan.setEnabled(True)
-        self.status.setText(f"Найдено {plural(len(found), 'программа', 'программы', 'программ')} за "
-                            f"{took:.1f} с. Нет нужной — добавьте файл или папку.".replace(".", ",", 1))
+        self.status.setText(tr("Найдено {programs} за {took} с. Нет нужной — добавьте файл или папку.",
+                               programs=plural(len(found), "программа", "программы", "программ"),
+                               took=decimal(took)))
 
     def _fill(self, found: list[apps.App]) -> None:
         running = self.view.current == "running"
         if not found and not running:
             self.spinner.show()
-            self.status.setText("Ищем установленные программы…")
+            self.status.setText(tr("Ищем установленные программы…"))
             self.rescan.setEnabled(False)
         self.list.blockSignals(True)
         self.list.clear()
@@ -274,7 +282,7 @@ class PresetDialog(Dialog):
         self._icon_timer.start()
 
     def _add_item(self, app: apps.App, checked: bool) -> QListWidgetItem:
-        label = app.name + (f"   ·   {app.source}" if app.source else "") + ("   ·   папка" if app.kind == "dir"
+        label = app.name + (f"   ·   {app.source}" if app.source else "") + (tr("   ·   папка") if app.kind == "dir"
                                                                              and not app.source else "")
         item = QListWidgetItem(label)
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
@@ -344,13 +352,13 @@ class PresetDialog(Dialog):
         self._sync_count()
 
     def _add_file(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(self, "Выберите программу", os.environ.get("ProgramFiles", ""),
-                                                "Программы (*.exe);;Все файлы (*)")
+        paths, _ = QFileDialog.getOpenFileNames(self, tr("Выберите программу"), os.environ.get("ProgramFiles", ""),
+                                                tr("Программы (*.exe);;Все файлы (*)"))
         for path in paths:
             self._add_picked(apps.from_path(path))
 
     def _add_folder(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Папка программы или игры — учитываются все её .exe",
+        path = QFileDialog.getExistingDirectory(self, tr("Папка программы или игры — учитываются все её .exe"),
                                                 os.environ.get("ProgramFiles", ""))
         if path:
             self._add_picked(apps.from_path(path))
@@ -374,19 +382,19 @@ class PresetDialog(Dialog):
     def _sync_count(self) -> None:
         n_apps = len(self._chosen)
         bad = [line for line in self._site_lines() if not site_entry(line)]
-        text = f"выбрано: {n_apps}"
+        text = tr("выбрано: {n}", n=n_apps)
         self.count.setText(text)
         if bad:
-            self.error.setText(f"Не понял строку сайтов: «{bad[0]}». Она будет пропущена.")
+            self.error.setText(tr("Не понял строку сайтов: «{line}». Она будет пропущена.", line=bad[0]))
         self.error.setVisible(bool(bad))
 
     def accept(self) -> None:
         sites = self._site_lines()
         if not self._chosen and not any(site_entry(s) for s in sites):
-            self.error.setText("Отметьте хотя бы одну программу или впишите сайт.")
+            self.error.setText(tr("Отметьте хотя бы одну программу или впишите сайт."))
             self.error.show()
             return
-        name = self.name.text().strip() or "Мой пресет"
+        name = self.name.text().strip() or tr("Мой пресет")
         base, i = name, 2
         while name.casefold() in self._taken:
             name, i = f"{base} {i}", i + 1
@@ -408,9 +416,9 @@ class PresetsPage(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(2, 22, 2, 8)
         lay.setSpacing(12)
-        intro = QLabel("Свои правила: какие программы и сайты идут мимо VPN или, наоборот, только через него. "
-                       "Созданный пресет появляется на главном экране в «Маршрутизации» рядом с «Умная*» и "
-                       "«Весь трафик».", objectName="hint")
+        intro = QLabel(tr("Свои правила: какие программы и сайты идут мимо VPN или, наоборот, только через него. "
+                          "Созданный пресет появляется на главном экране в «Маршрутизации» рядом с «Умная*» и "
+                          "«Весь трафик»."), objectName="hint")
         intro.setWordWrap(True)
         lay.addWidget(intro)
         self.list = QListWidget()
@@ -419,24 +427,24 @@ class PresetsPage(QWidget):
         self.list.currentRowChanged.connect(self._sync)
         lay.addWidget(self.list, 1)
         row = QHBoxLayout()
-        self.add_btn = QPushButton("Создать пресет…", objectName="primary")
+        self.add_btn = QPushButton(tr("Создать пресет…"), objectName="primary")
         self.add_btn.clicked.connect(self._add)
-        self.edit_btn = QPushButton("Изменить…")
+        self.edit_btn = QPushButton(tr("Изменить…"))
         self.edit_btn.clicked.connect(self._edit)
-        self.del_btn = QPushButton("Удалить")
+        self.del_btn = QPushButton(tr("Удалить"))
         self.del_btn.clicked.connect(self._delete)
         row.addWidget(self.add_btn)
         row.addWidget(self.edit_btn)
         row.addWidget(self.del_btn)
         row.addStretch()
         lay.addLayout(row)
-        self.empty = QLabel("Пресетов пока нет.", objectName="hint")
+        self.empty = QLabel(tr("Пресетов пока нет."), objectName="hint")
         self._render()
 
     def _render(self, select: int = 0) -> None:
         self.list.clear()
         for p in self.presets:
-            how = "в обход VPN" if p.get("mode", "bypass") == "bypass" else "только через VPN"
+            how = tr("в обход VPN") if p.get("mode", "bypass") == "bypass" else tr("только через VPN")
             item = QListWidgetItem(icons.icon("route", theme.TEXT_2, 18), f"{p['name']}   ·   {describe(p)} {how}")
             item.setSizeHint(QSize(0, 38))
             self.list.addItem(item)
@@ -471,7 +479,8 @@ class PresetsPage(QWidget):
         i = self.list.currentRow()
         if i < 0 or i >= len(self.presets):
             return
-        if ask(self, "Удалить пресет", f"Пресет «{self.presets[i]['name']}» будет удалён.", "Удалить"):
+        if ask(self, tr("Удалить пресет"), tr("Пресет «{name}» будет удалён.", name=self.presets[i]["name"]),
+               tr("Удалить")):
             removed = self.presets.pop(i)
             if removed["id"] == self.active:
                 self.active = ""

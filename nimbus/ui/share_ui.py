@@ -8,6 +8,7 @@ from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QImage, QPainter
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QPushButton, QWidget
 
+from ..i18n import tr
 from .. import qr
 from . import flags, theme
 from .dialogs import Dialog
@@ -62,11 +63,11 @@ def safe_filename(name: str, default: str = "nimbus") -> str:
 
 def save_text(parent, title: str, name: str, text: str, ext: str) -> str | None:
     """Ask where to save and write text there; returns the path, or None if cancelled."""
-    filters = {"json": "JSON (*.json)", "txt": "Текст (*.txt)"}
+    filters = {"json": "JSON (*.json)", "txt": tr("Текст (*.txt)")}
     start = Path.home() / "Downloads"
     start = start if start.is_dir() else Path.home()
     path, _ = QFileDialog.getSaveFileName(parent, title, str(start / f"{safe_filename(name)}.{ext}"),
-                                          f"{filters[ext]};;Все файлы (*)")
+                                          tr("{filter};;Все файлы (*)", filter=filters[ext]))
     if not path:
         return None
     Path(path).write_text(text, "utf-8")
@@ -75,7 +76,7 @@ def save_text(parent, title: str, name: str, text: str, ext: str) -> str | None:
 
 class QrDialog(Dialog):
     def __init__(self, parent, title: str, text: str, hint: str, note: str = ""):
-        super().__init__(parent, "QR-код", title, hint, 460)
+        super().__init__(parent, tr("QR-код"), title, hint, 460)
         self.text = text
         self.code = qr.encode(text, "M" if len(text.encode()) < 600 else "L")
         self.lay.addSpacing(6)
@@ -93,11 +94,11 @@ class QrDialog(Dialog):
         self.status.setFont(theme.font(8.5, QFont.Medium))
         self.lay.addWidget(self.status)
         buttons = QHBoxLayout()
-        save = QPushButton("Сохранить PNG…")
+        save = QPushButton(tr("Сохранить PNG…"))
         save.clicked.connect(self._save)
-        copy = QPushButton("Копировать текст")
+        copy = QPushButton(tr("Копировать текст"))
         copy.clicked.connect(self._copy)
-        done = QPushButton("Готово", objectName="primary")
+        done = QPushButton(tr("Готово"), objectName="primary")
         done.setDefault(True)
         done.clicked.connect(self.accept)
         buttons.addWidget(save)
@@ -110,12 +111,12 @@ class QrDialog(Dialog):
 
     def _copy(self) -> None:
         QGuiApplication.clipboard().setText(self.text)
-        self.status.setText("Скопировано в буфер обмена")
+        self.status.setText(tr("Скопировано в буфер обмена"))
 
     def _save(self) -> None:
         start = Path.home() / "Downloads"
         start = start if start.is_dir() else Path.home()
-        path, _ = QFileDialog.getSaveFileName(self, "Сохранить QR-код",
+        path, _ = QFileDialog.getSaveFileName(self, tr("Сохранить QR-код"),
                                               str(start / f"{safe_filename(self._name)} QR.png"), "PNG (*.png)")
         if not path:
             return
@@ -127,4 +128,4 @@ class QrDialog(Dialog):
         paint_qr(p, QRectF(0, 0, img.width(), img.height()), self.code)
         p.end()
         img.save(path, "PNG")
-        self.status.setText(f"Сохранено: {Path(path).name}")
+        self.status.setText(tr("Сохранено: {name}", name=Path(path).name))

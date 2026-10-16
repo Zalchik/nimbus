@@ -17,6 +17,7 @@ import winreg
 from concurrent.futures import ThreadPoolExecutor
 from ctypes import wintypes
 from dataclasses import dataclass
+from .i18n import tr
 
 WINDIR = os.environ.get("SystemRoot", r"C:\Windows").lower()
 _JUNK_EXE = re.compile(r"unins|uninst|setup|install|crash|report|helper|updater|update\.exe$|vcredist|dxsetup"
@@ -344,11 +345,11 @@ def running() -> list[App]:
             continue
         app = by_path.get(low)
         if app is None:
-            app = by_path[low] = App(describe(path), path, source="в фоне")
-        if pid in titles and app.source == "в фоне":
+            app = by_path[low] = App(describe(path), path, source=tr("в фоне"))
+        if pid in titles and app.source == tr("в фоне"):
             title = titles[pid]
             app.source = title if len(title) <= 48 else title[:47] + "…"
-    return sorted(by_path.values(), key=lambda a: (a.source == "в фоне", a.name.casefold()))
+    return sorted(by_path.values(), key=lambda a: (a.source == tr("в фоне"), a.name.casefold()))
 
 
 def describe(path: str) -> str:
@@ -384,7 +385,7 @@ def _from_processes() -> list[App]:
         low = path.lower()
         if low.startswith(WINDIR) or os.path.normcase(path) in own or low.endswith("xray.exe"):
             continue
-        out.append(App(describe(path), path, source="Запущена"))
+        out.append(App(describe(path), path, source=tr("Запущена")))
     return out
 
 

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from .i18n import tr
 from .lazy import httpx
 
 from . import paths
@@ -128,9 +129,10 @@ def parse_checksums(text: str) -> dict[str, str]:
 def verify(size: int, digest: str, want_size: int, want_digest: str = "") -> None:
     """Raise UpdateError if the file isn't what the release says (want_size 0 = unknown)."""
     if want_size and size != want_size:
-        raise UpdateError(f"файл скачался не полностью ({size} из {want_size} байт)")
+        raise UpdateError(tr("файл скачался не полностью ({size} из {want_size} байт)",
+                             size=size, want_size=want_size))
     if want_digest and digest.lower() != want_digest.lower():
-        raise UpdateError("контрольная сумма SHA-256 не совпадает: файл повреждён или подменён")
+        raise UpdateError(tr("контрольная сумма SHA-256 не совпадает: файл повреждён или подменён"))
 
 
 def _checksum(release: Release, name: str, proxy: str | None) -> str:
@@ -142,7 +144,7 @@ def _checksum(release: Release, name: str, proxy: str | None) -> str:
     r.raise_for_status()
     digest = parse_checksums(r.text).get(name, "")
     if not digest:
-        raise UpdateError(f"в {CHECKSUMS} нет {name}")
+        raise UpdateError(tr("в {file} нет {name}", file=CHECKSUMS, name=name))
     return digest
 
 
@@ -153,7 +155,7 @@ def download(release: Release, kind: str, proxy: str | None = None,
     name = asset_name(release.version, kind)
     asset = release.assets.get(name)
     if asset is None:
-        raise UpdateError(f"в релизе {release.tag} нет файла {name}")
+        raise UpdateError(tr("в релизе {tag} нет файла {name}", tag=release.tag, name=name))
     want_digest = _checksum(release, name, proxy)
     WORK_DIR.mkdir(parents=True, exist_ok=True)
     dest = WORK_DIR / name
@@ -167,7 +169,7 @@ def download(release: Release, kind: str, proxy: str | None = None,
             with open(part, "wb") as f:
                 for chunk in r.iter_bytes(1 << 16):
                     if cancelled():
-                        raise Cancelled("загрузка отменена")
+                        raise Cancelled(tr("загрузка отменена"))
                     f.write(chunk)
                     sha.update(chunk)
                     done += len(chunk)
@@ -190,11 +192,11 @@ def unpack(archive: Path) -> Path:
         root = out.resolve()
         for member in z.namelist():   # nothing may land outside `out`
             if not (out / member).resolve().is_relative_to(root):
-                raise UpdateError(f"в архиве недопустимый путь: {member}")
+                raise UpdateError(tr("в архиве недопустимый путь: {member}", member=member))
         z.extractall(out)
     app = out / "Nimbus"
     if not (app / Path(sys.executable).name).exists():
-        raise UpdateError("в архиве нет программы")
+        raise UpdateError(tr("в архиве нет программы"))
     return app
 
 
@@ -229,7 +231,7 @@ def prepare(release: Release, kind: str, proxy: str | None = None,
     """Download and check the update; for a portable copy also unpack it. Returns what
     install() takes: the installer, or the unpacked Nimbus folder."""
     if kind not in ("setup", "portable"):
-        raise UpdateError("эта копия не обновляется сама")
+        raise UpdateError(tr("эта копия не обновляется сама"))
     path = download(release, kind, proxy, progress, cancelled)
     return unpack(path) if kind == "portable" else path
 

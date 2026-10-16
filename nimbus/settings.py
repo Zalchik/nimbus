@@ -70,6 +70,7 @@ class Settings:
     update_check: bool = True           # look for a new release on GitHub at launch and every few hours
     update_skip: str = ""               # version the user said "never" to; a newer one is offered again
     theme: str = "dark"                 # dark | light
+    language: str = "auto"             # auto (the system's) | ru | en; takes effect after a restart
     selected_server: str = ""
     recent_servers: list = field(default_factory=list)   # servers / balancers last connected to, newest first
     sort_mode: str = "source"           # source | ping | name

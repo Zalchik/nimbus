@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton, QSpinBox, QStyledItemDelegate, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
+from ..i18n import plural, tr
 from .. import balancer, deeplink, links, paths, subscription
 from ..store import Balancer, Server
 from . import flags, icons, theme
@@ -53,7 +54,7 @@ class Dialog(QDialog):
             h = self.lay.totalHeightForWidth(self.width()) if self.lay.hasHeightForWidth()                 else self.sizeHint().height()
             self.resize(self.width(), max(self.height(), h))
 
-    def buttons(self, ok: str = "Готово", cancel: str | None = "Отмена") -> None:
+    def buttons(self, ok: str = tr("Готово"), cancel: str | None = tr("Отмена")) -> None:
         row = QHBoxLayout()
         row.addStretch()
         if cancel:
@@ -68,13 +69,13 @@ class Dialog(QDialog):
         self.lay.addLayout(row)
 
 
-def ask(parent, title: str, text: str, ok: str = "Да", cancel: str = "Отмена") -> bool:
+def ask(parent, title: str, text: str, ok: str = tr("Да"), cancel: str = tr("Отмена")) -> bool:
     d = Dialog(parent, title, title, text, 460)
     d.buttons(ok, cancel)
     return bool(d.exec())
 
 
-def inform(parent, title: str, text: str, ok: str = "Понятно") -> None:
+def inform(parent, title: str, text: str, ok: str = tr("Понятно")) -> None:
     d = Dialog(parent, title, title, text, 480)
     d.buttons(ok, None)
     d.exec()
@@ -85,7 +86,7 @@ def get_text(parent, title: str, label: str, text: str = "") -> tuple[str, bool]
     edit = QLineEdit(text)
     d.lay.addSpacing(4)
     d.lay.addWidget(edit)
-    d.buttons("Сохранить")
+    d.buttons(tr("Сохранить"))
     edit.selectAll()
     ok = bool(d.exec())
     return edit.text().strip(), ok
@@ -104,8 +105,8 @@ class UserAgentPicker(QWidget):
             self.combo.addItem(inherit_label, INHERIT)
         for name, ua in UA_PRESETS:
             self.combo.addItem(f"{name}  ·  {ua}", ua)
-        self.combo.addItem("Свой…", CUSTOM)
-        self.edit = QLineEdit(placeholderText="Например, Hiddify/2.5.7")
+        self.combo.addItem(tr("Свой…"), CUSTOM)
+        self.edit = QLineEdit(placeholderText=tr("Например, Hiddify/2.5.7"))
         lay.addWidget(self.combo, 1)
         lay.addWidget(self.edit, 1)
         i = self.combo.findData(INHERIT if not value and inherit_label is not None else value)
@@ -131,20 +132,20 @@ class UserAgentPicker(QWidget):
 
 class UserAgentDialog(Dialog):
     def __init__(self, parent, current: str, default: str):
-        super().__init__(parent, "User-Agent", "User-Agent подписки",
-                         "От него зависит формат подписки: с Happ или v2rayN панели (Remnawave, Marzban) "
-                         "отдают полные Xray-конфиги с балансировщиком. После сохранения подписка обновится.", 560)
-        self.picker = UserAgentPicker(current, f"Как в настройках  ·  {default}")
+        super().__init__(parent, "User-Agent", tr("User-Agent подписки"),
+                         tr("От него зависит формат подписки: с Happ или v2rayN панели (Remnawave, Marzban) "
+                            "отдают полные Xray-конфиги с балансировщиком. После сохранения подписка обновится."), 560)
+        self.picker = UserAgentPicker(current, tr("Как в настройках  ·  {default}", default=default))
         self.lay.addSpacing(4)
         self.lay.addWidget(self.picker)
-        self.buttons("Сохранить")
+        self.buttons(tr("Сохранить"))
 
 
 class LogDialog(Dialog):
     def __init__(self, ctl, parent=None):
-        super().__init__(parent, "Логи Xray", "Логи ядра",
-                         "Подробность задаётся в настройках → Дополнительно → Уровень логов. "
-                         "Соединения видны на уровне info и debug.", 860)
+        super().__init__(parent, tr("Логи Xray"), tr("Логи ядра"),
+                         tr("Подробность задаётся в настройках → Дополнительно → Уровень логов. "
+                            "Соединения видны на уровне info и debug."), 860)
         self.resize(860, 520)
         self.view = QPlainTextEdit(readOnly=True)
         self.view.setMaximumBlockCount(5000)
@@ -154,15 +155,15 @@ class LogDialog(Dialog):
         row = QHBoxLayout()
         row.setSpacing(8)
         for text, slot in (
-            ("Копировать", lambda: QGuiApplication.clipboard().setText(self.view.toPlainText())),
-            ("Очистить", self.view.clear),
-            ("Папка с данными", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(paths.DATA_DIR)))),
+            (tr("Копировать"), lambda: QGuiApplication.clipboard().setText(self.view.toPlainText())),
+            (tr("Очистить"), self.view.clear),
+            (tr("Папка с данными"), lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(paths.DATA_DIR)))),
         ):
             b = QPushButton(text)
             b.clicked.connect(slot)
             row.addWidget(b)
         row.addStretch()
-        close = QPushButton("Закрыть", objectName="primary")
+        close = QPushButton(tr("Закрыть"), objectName="primary")
         close.clicked.connect(self.close)
         row.addWidget(close)
         self.lay.addLayout(row)
@@ -175,9 +176,9 @@ class AddDialog(Dialog):
     """Subscription URL. Picks up the clipboard if it holds one."""
 
     def __init__(self, parent=None, url: str = ""):
-        super().__init__(parent, "Подписка", "Добавить подписку",
-                         "Ссылка на подписку от VPN-провайдера (https://…). Серверы, трафик и срок подписки "
-                         "подтянутся сами и будут обновляться автоматически.", 560)
+        super().__init__(parent, tr("Подписка"), tr("Добавить подписку"),
+                         tr("Ссылка на подписку от VPN-провайдера (https://…). Серверы, трафик и срок подписки "
+                            "подтянутся сами и будут обновляться автоматически."), 560)
         self.edit = QLineEdit(placeholderText="https://…")
         self.edit.setFont(theme.font(9, mono=True))
         self.edit.setMinimumHeight(40)
@@ -187,7 +188,7 @@ class AddDialog(Dialog):
             self.edit.selectAll()
         self.lay.addSpacing(4)
         self.lay.addWidget(self.edit)
-        self.buttons("Добавить")
+        self.buttons(tr("Добавить"))
 
     def text(self) -> str:
         return self.edit.text().strip()
@@ -213,15 +214,15 @@ class ConfigsDialog(Dialog):
     def __init__(self, parent, groups: list[tuple[str, str]], group_id: str = "", new_group: bool = False,
                  text: str = ""):
         if new_group:
-            super().__init__(parent, "Новая группа", "Новая группа",
-                             "Группа — ваша папка для конфигов. Дайте ей название и, если хотите, сразу добавьте "
-                             "конфиги: текстом или файлом. Позже — кнопкой «+» справа от названия группы "
-                             "или правым кликом по ней.", 640)
+            super().__init__(parent, tr("Новая группа"), tr("Новая группа"),
+                             tr("Группа — ваша папка для конфигов. Дайте ей название и, если хотите, сразу добавьте "
+                                "конфиги: текстом или файлом. Позже — кнопкой «+» справа от названия группы "
+                                "или правым кликом по ней."), 640)
         else:
-            super().__init__(parent, "Конфиги", "Добавить конфиги",
-                             "Ссылки vless://, vmess://, trojan://, ss://, hy2://, socks://, wireguard:// — по одной "
-                             "на строку — или Xray JSON. Можно загрузить файлы .json / .txt или перетащить их "
-                             "в это окно.", 640)
+            super().__init__(parent, tr("Конфиги"), tr("Добавить конфиги"),
+                             tr("Ссылки vless://, vmess://, trojan://, ss://, hy2://, socks://, wireguard:// — по одной "
+                                "на строку — или Xray JSON. Можно загрузить файлы .json / .txt или перетащить их "
+                                "в это окно."), 640)
         self.new_group = new_group
         self.files: list[tuple[str, str]] = []   # (file name, text)
         self.setAcceptDrops(True)
@@ -229,11 +230,11 @@ class ConfigsDialog(Dialog):
         form = QHBoxLayout()
         form.setSpacing(10)
         if new_group:
-            self.name = QLineEdit(placeholderText="Название группы, например «Работа»")
+            self.name = QLineEdit(placeholderText=tr("Название группы, например «Работа»"))
             self.name.setMinimumHeight(40)
             form.addWidget(self.name, 1)
         else:
-            lbl = QLabel("Группа")
+            lbl = QLabel(tr("Группа"))
             lbl.setStyleSheet(f"color: {theme.MUTED};")
             self.group = QComboBox()
             for gid, title in groups:
@@ -244,7 +245,7 @@ class ConfigsDialog(Dialog):
         self.lay.addSpacing(4)
         self.lay.addLayout(form)
         self.edit = QPlainTextEdit()
-        self.edit.setPlaceholderText('vless://…\nhy2://…\n\nили {"outbounds": [...]}')
+        self.edit.setPlaceholderText(tr('vless://…\nhy2://…\n\nили {"outbounds": [...]}'))
         self.edit.setFont(theme.font(9, mono=True))
         clip = text or QGuiApplication.clipboard().text().strip()
         first = clip.splitlines()[0] if clip else ""
@@ -255,7 +256,7 @@ class ConfigsDialog(Dialog):
         self.lay.addWidget(self.edit, 1)
         row = QHBoxLayout()
         row.setSpacing(10)
-        pick = QPushButton("Загрузить файл…")
+        pick = QPushButton(tr("Загрузить файл…"))
         pick.clicked.connect(self._pick)
         row.addWidget(pick)
         self.status = QLabel()
@@ -263,20 +264,20 @@ class ConfigsDialog(Dialog):
         self.status.setWordWrap(True)
         row.addWidget(self.status, 1)
         self.lay.addLayout(row)
-        self.buttons("Создать группу" if new_group else "Добавить")
+        self.buttons(tr("Создать группу") if new_group else tr("Добавить"))
         self.ok = self.findChild(QPushButton, "primary")
         self._update()
 
     def _pick(self) -> None:
-        names, _ = QFileDialog.getOpenFileNames(self, "Файлы с конфигами", "",
-                                                "Конфиги (*.json *.txt *.conf);;Все файлы (*)")
+        names, _ = QFileDialog.getOpenFileNames(self, tr("Файлы с конфигами"), "",
+                                                tr("Конфиги (*.json *.txt *.conf);;Все файлы (*)"))
         self._load([Path(n) for n in names])
 
     def _load(self, paths_: list[Path]) -> None:
         for path in paths_:
             try:
                 if path.stat().st_size > 5_000_000:
-                    raise OSError("файл больше 5 МБ")
+                    raise OSError(tr("файл больше 5 МБ"))
                 self.files.append((path.name, _read_config_file(path)))
             except OSError as e:
                 self.files.append((path.name, ""))
@@ -301,9 +302,9 @@ class ConfigsDialog(Dialog):
         parts = []
         if self.files:
             names = ", ".join(name for name, _ in self.files[:3]) + ("…" if len(self.files) > 3 else "")
-            parts.append(f"Файлы: {names}")
+            parts.append(tr("Файлы: {names}", names=names))
         if self.chunks():
-            parts.append(f"найдено конфигов: {n}" if n else "конфиги не распознаны")
+            parts.append(tr("найдено конфигов: {n}", n=n) if n else tr("конфиги не распознаны"))
         self.status.setText(" · ".join(parts).capitalize() if parts else "")
         self.status.setStyleSheet(f"color: {theme.TEXT if n else theme.MUTED};")
         self.ok.setEnabled(self.new_group or n > 0)
@@ -313,14 +314,6 @@ class ConfigsDialog(Dialog):
 
     def group_name(self) -> str:
         return self.name.text().strip()
-
-
-def plural(n: int, one: str, few: str, many: str) -> str:
-    if n % 10 == 1 and n % 100 != 11:
-        return one
-    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        return few
-    return many
 
 
 def flag_icon(code: str | None) -> QIcon:
@@ -340,7 +333,7 @@ COL_ARROW, COL_NAME, COL_PING = 0, 1, 2
 def _ms_text(latency: int | None) -> str:
     if latency is None:
         return "—"
-    return "нет ответа" if latency < 0 else f"{latency} мс"
+    return tr("нет ответа") if latency < 0 else tr("{latency} мс", latency=latency)
 
 
 def _chevron(expanded: bool) -> QIcon:
@@ -369,7 +362,7 @@ class _PingButton(QStyledItemDelegate):
     def paint(self, p: QPainter, option, index: QModelIndex) -> None:
         text = index.data(Qt.DisplayRole) or ""
         hot = QPersistentModelIndex(index) == self.dialog._hover
-        quiet = text.startswith("проверка") or text in ("—", "проверить")
+        quiet = text in ("—", tr("проверка…"), tr("проверить"))
         fm = QFontMetricsF(self._font)
         r = QRectF(option.rect)
         w = min(r.width() - 10, fm.horizontalAdvance(text) + 40)
@@ -396,29 +389,30 @@ class BalancerDialog(Dialog):
 
     def __init__(self, parent, ctl, groups: list[tuple[str, str, list[Server]]], bal: Balancer | None = None,
                  picked: set[str] | None = None):
-        super().__init__(parent, "Балансировщик", "Изменить балансировщик" if bal else "Новый балансировщик",
-                         "Отметьте серверы из любых подписок и групп. Nimbus сам проверяет их скорость и ведёт "
-                         "трафик через самый быстрый, а если тот перестанет отвечать, переключается на следующий "
-                         "без переподключения. Подписка или группа, отмеченная целиком, берётся вместе с "
-                         "будущими серверами. Несколько подряд отмечаются протягиванием мыши с зажатой кнопкой.",
+        super().__init__(parent, tr("Балансировщик"),
+                         tr("Изменить балансировщик") if bal else tr("Новый балансировщик"),
+                         tr("Отметьте серверы из любых подписок и групп. Nimbus сам проверяет их скорость и ведёт "
+                            "трафик через самый быстрый, а если тот перестанет отвечать, переключается на следующий "
+                            "без переподключения. Подписка или группа, отмеченная целиком, берётся вместе с "
+                            "будущими серверами. Несколько подряд отмечаются протягиванием мыши с зажатой кнопкой."),
                          640)
         self.resize(640, 700)
         self.ctl = ctl
         picked = set(picked or ())
         subs = set(bal.sub_ids) if bal else set()
         ids = set(bal.server_ids) if bal else set()
-        self.name = QLineEdit(bal.name if bal else "", placeholderText="Название, например «Европа»")
+        self.name = QLineEdit(bal.name if bal else "", placeholderText=tr("Название, например «Европа»"))
         self.name.setMinimumHeight(40)
         self.lay.addSpacing(4)
         self.lay.addWidget(self.name)
 
         bar = QHBoxLayout()
         bar.setSpacing(8)
-        self.search = QLineEdit(placeholderText="Поиск по серверам")
+        self.search = QLineEdit(placeholderText=tr("Поиск по серверам"))
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._filter)
         bar.addWidget(self.search, 1)
-        self.ping_all = IconButton("pulse", "Проверить задержку всех серверов в списке", text="Проверить все",
+        self.ping_all = IconButton("pulse", tr("Проверить задержку всех серверов в списке"), text=tr("Проверить все"),
                                    size=38)
         self.ping_all.clicked.connect(lambda: self._ping(list(self._servers.values())))
         bar.addWidget(self.ping_all)
@@ -451,12 +445,12 @@ class BalancerDialog(Dialog):
         bold = theme.font(9.2, QFont.DemiBold)
         shown = [g for g in groups if g[2]]
         for gid, title, servers in shown:
-            head = QTreeWidgetItem(["", f"{title}   ·   {len(servers)}", "проверить"])
+            head = QTreeWidgetItem(["", f"{title}   ·   {len(servers)}", tr("проверить")])
             head.setFlags(head.flags() | Qt.ItemIsUserCheckable)
             head.setData(COL_NAME, Qt.UserRole, ("group", gid, title))
             head.setFont(COL_NAME, bold)
-            head.setToolTip(COL_ARROW, "Свернуть или развернуть")
-            head.setToolTip(COL_PING, f"Проверить задержку серверов «{title}»")
+            head.setToolTip(COL_ARROW, tr("Свернуть или развернуть"))
+            head.setToolTip(COL_PING, tr("Проверить задержку серверов «{title}»", title=title))
             head.setSizeHint(COL_NAME, QSize(0, 38))
             self.tree.addTopLevelItem(head)
             self._heads[gid] = head
@@ -468,7 +462,7 @@ class BalancerDialog(Dialog):
                 item.setData(COL_NAME, Qt.UserRole, ("server", s.id, gid, s.name))
                 item.setIcon(COL_NAME, flag_icon(code))
                 item.setToolTip(COL_NAME, s.name)
-                item.setToolTip(COL_PING, "Проверить задержку")
+                item.setToolTip(COL_PING, tr("Проверить задержку"))
                 item.setCheckState(COL_NAME, Qt.Checked if gid in subs or s.id in ids or s.id in picked
                                    else Qt.Unchecked)
                 item.setSizeHint(COL_NAME, QSize(0, 32))
@@ -495,7 +489,7 @@ class BalancerDialog(Dialog):
 
         mode_row = QHBoxLayout()
         mode_row.setSpacing(10)
-        mode_lbl = QLabel("Режим")
+        mode_lbl = QLabel(tr("Режим"))
         mode_lbl.setStyleSheet(f"color: {theme.MUTED};")
         self.mode = QComboBox()
         for key, title in balancer.MODES.items():
@@ -513,11 +507,11 @@ class BalancerDialog(Dialog):
 
         row = QHBoxLayout()
         row.setSpacing(10)
-        lbl = QLabel("Проверять скорость каждые")
+        lbl = QLabel(tr("Проверять скорость каждые"))
         lbl.setStyleSheet(f"color: {theme.MUTED};")
         self.interval = QSpinBox()
         self.interval.setRange(10, 600)
-        self.interval.setSuffix(" с")
+        self.interval.setSuffix(tr(" с"))
         self.interval.setValue(bal.interval if bal else 30)
         self.interval.setFixedWidth(90)
         row.addWidget(lbl)
@@ -527,7 +521,7 @@ class BalancerDialog(Dialog):
         self.status.setFont(theme.font(8.8, QFont.Medium))
         row.addWidget(self.status)
         self.lay.addLayout(row)
-        self.buttons("Сохранить" if bal else "Создать")
+        self.buttons(tr("Сохранить") if bal else tr("Создать"))
         self.ok = self.findChild(QPushButton, "primary")
         self._busy = False
         self._pinging: set[str] = set()
@@ -659,19 +653,20 @@ class BalancerDialog(Dialog):
             data = item.data(COL_NAME, Qt.UserRole)
             if data[0] == "group":
                 gid = data[1]
-                menu.addAction(ic("pulse"), "Проверить задержку", lambda: self._ping_item(item))
-                menu.addAction(ic("check"), "Отметить все", lambda: self._set_group(gid, Qt.Checked))
-                menu.addAction(ic("close"), "Снять все", lambda: self._set_group(gid, Qt.Unchecked))
-                menu.addAction("Свернуть" if item.isExpanded() else "Развернуть",
+                menu.addAction(ic("pulse"), tr("Проверить задержку"), lambda: self._ping_item(item))
+                menu.addAction(ic("check"), tr("Отметить все"), lambda: self._set_group(gid, Qt.Checked))
+                menu.addAction(ic("close"), tr("Снять все"), lambda: self._set_group(gid, Qt.Unchecked))
+                menu.addAction(tr("Свернуть") if item.isExpanded() else tr("Развернуть"),
                                lambda: item.setExpanded(not item.isExpanded()))
             else:
-                menu.addAction(ic("pulse"), "Проверить задержку", lambda: self._ping_item(item))
+                menu.addAction(ic("pulse"), tr("Проверить задержку"), lambda: self._ping_item(item))
                 ticked = [self._servers[i] for i in self.server_ids(all_=True)]
                 if ticked:
-                    menu.addAction(ic("pulse"), f"Проверить отмеченные ({len(ticked)})", lambda: self._ping(ticked))
+                    menu.addAction(ic("pulse"), tr("Проверить отмеченные ({n})",
+                                                   n=len(ticked)), lambda: self._ping(ticked))
             menu.addSeparator()
-        menu.addAction("Свернуть все", lambda: [h.setExpanded(False) for h in self._heads.values()])
-        menu.addAction("Развернуть все", lambda: [h.setExpanded(True) for h in self._heads.values()])
+        menu.addAction(tr("Свернуть все"), lambda: [h.setExpanded(False) for h in self._heads.values()])
+        menu.addAction(tr("Развернуть все"), lambda: [h.setExpanded(True) for h in self._heads.values()])
         menu.exec(self.tree.viewport().mapToGlobal(pos))
 
     # -- ping ------------------------------------------------------------------------------
@@ -688,7 +683,7 @@ class BalancerDialog(Dialog):
             return
         self._pinging |= {s.id for s in servers}
         for s in servers:
-            self._items[s.id].setText(COL_PING, "проверка…")
+            self._items[s.id].setText(COL_PING, tr("проверка…"))
         self.ctl.ping(servers)
 
     def _on_ping(self, sid: str, ms: int) -> None:
@@ -726,8 +721,9 @@ class BalancerDialog(Dialog):
 
     def _update(self) -> None:
         n = len(self.server_ids(all_=True))
-        self.status.setText(f"Выбрано: {n} {plural(n, 'сервер', 'сервера', 'серверов')}" if n
-                            else "Серверы не выбраны")
+        self.status.setText(tr("Выбрано: {n} {servers}", n=n, servers=plural(n, "сервер", "сервера", "серверов"))
+                            if n
+                            else tr("Серверы не выбраны"))
         self.status.setStyleSheet(f"color: {theme.TEXT if n else theme.MUTED};")
         self.ok.setEnabled(n > 0)
 
@@ -742,11 +738,11 @@ class BalancerDialog(Dialog):
 
     def _mode_hint(self) -> None:
         if self.mode.currentData() == "stable":
-            text = (f"Держится за сервер, пока он отвечает. Переходит на другой, только если тот быстрее "
-                    f"хотя бы на {balancer.MIN_GAIN_MS} мс и на {int(balancer.MIN_GAIN_RATIO * 100)}%: "
-                    f"IP меняется редко, сайты не разлогинивают.")
+            text = (tr("Держится за сервер, пока он отвечает. Переходит на другой, только если тот быстрее хотя бы "
+                       "на {ms} мс и на {pct}%: IP меняется редко, сайты не разлогинивают.",
+                       ms=balancer.MIN_GAIN_MS, pct=int(balancer.MIN_GAIN_RATIO * 100)))
         else:
-            text = "Всегда самый быстрый сервер. IP может меняться чаще: банки и игры иногда просят войти заново."
+            text = tr("Всегда самый быстрый сервер. IP может меняться чаще: банки и игры иногда просят войти заново.")
         self.mode_hint.setText(text)
 
     def balancer_mode(self) -> str:
