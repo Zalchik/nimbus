@@ -2,7 +2,7 @@
 
 [English](README.en.md) · **Русский**
 
-VPN-клиент для Windows на [Xray-core](https://github.com/XTLS/Xray-core) и [sing-box](https://github.com/SagerNet/sing-box).
+VPN-клиент для Windows и Linux на [Xray-core](https://github.com/XTLS/Xray-core) и [sing-box](https://github.com/SagerNet/sing-box).
 Добавьте ссылку на подписку, выберите сервер и подключитесь. Остальное Nimbus сделает сам.
 
 **[Скачать последнюю версию →](https://github.com/Zalchik/nimbus/releases/latest)**
@@ -28,6 +28,13 @@ Nimbus сам проверяет новые версии при запуске �
 
 - Распакуйте куда угодно, кроме `Program Files`. Данные хранятся в папке `data` рядом с `Nimbus.exe`, так что папку можно переносить или носить на флешке.
 - Обновление вручную: распакуйте новую версию поверх старой. Папка `data` останется.
+
+**Linux (бета): `Nimbus-<версия>-x86_64.AppImage`**
+
+- Сделайте файл исполняемым (`chmod +x Nimbus-*.AppImage`) и запустите. Нужен FUSE 2 (пакет `libfuse2`). Данные лежат в `~/.config/Nimbus`.
+- Режим TUN при первом включении один раз попросит пароль администратора: права на сеть получает только ядро sing-box, сам Nimbus работает от обычного пользователя.
+- Системный прокси настраивается в GNOME и KDE, в других окружениях работают переменные `HTTP_PROXY` / `HTTPS_PROXY`. Для значка в трее в GNOME нужно расширение AppIndicator.
+- Обновляется сам, как и версия для Windows: новый AppImage заменяет старый.
 
 В папке с данными лежат `settings.json` (настройки), `profiles.json` (подписки, группы, балансировщики) и `logs`. Открыть её можно из «Настройки → Приложение».
 
@@ -155,11 +162,12 @@ python tests/test_core_logic.py
 python build.py
 ```
 
-Результат появляется в `dist/<версия>/`: папка `Nimbus`, `Nimbus-<версия>-portable.zip`, `Nimbus-<версия>-setup.exe` и `SHA256SUMS.txt`. В релиз на GitHub загружайте все три файла: по `SHA256SUMS.txt` встроенное обновление проверяет скачанное. Тег релиза — `v<версия>`, как в `nimbus/paths.py`.
+Результат появляется в `dist/<версия>/`: папка `Nimbus`, `Nimbus-<версия>-portable.zip`, `Nimbus-<версия>-setup.exe` и `SHA256SUMS.txt`. В релиз на GitHub загружайте эти файлы (и AppImage для Linux) вместе с общим `SHA256SUMS.txt`: по нему встроенное обновление проверяет скачанное. Тег релиза — `v<версия>`, как в `nimbus/paths.py`.
 
 - Перед сборкой положите в `vendor/xray/` файлы `xray.exe`, `geoip.dat` и `geosite.dat` из [релиза Xray-core](https://github.com/XTLS/Xray-core/releases), а также `sing-box.exe` (windows-amd64, версия 1.15 или новее) из [релиза sing-box](https://github.com/SagerNet/sing-box/releases). Wintun встроен в sing-box.
 - Для установщика нужен [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`). Скрипт лежит в `installer/nimbus.iss`. `AppId` в нём не меняйте: по нему установщик находит уже установленный Nimbus.
 - Версия задаётся в `nimbus/paths.py` (`VERSION`).
+- Linux: `python tools/fetch_cores.py linux` и `python build_linux.py` на Linux x86_64 соберут `Nimbus-<версия>-x86_64.AppImage`. GitHub Actions (`.github/workflows/build.yml`) собирает обе версии по тегу `v*` и выкладывает их только как артефакты сборки, релиз не публикует.
 
 ## Лицензии
 

@@ -10,9 +10,12 @@ from PySide6.QtWidgets import (
     QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
-from .. import i18n, paths, subscription, updater, winsys
+from .. import i18n, paths, subscription, updater
+from ..platform import current as osys
 from ..i18n import tr
 from ..settings import Settings
+
+WIN = osys.OS_NAME == "Windows"
 from . import theme
 from .dialogs import UserAgentPicker
 from .presets import PresetsPage
@@ -36,17 +39,24 @@ class SettingsDialog(QDialog):
         tabs = QTabWidget()
         tabs.addTab(self._page([
             ("tunnel_mode", tr("Режим"), self._combo(s.tunnel_mode, [
-                ("proxy", tr("Системный прокси")), ("tun", tr("TUN — весь трафик (нужен администратор)"))])),
+                ("proxy", tr("Системный прокси")),
+                ("tun", tr("TUN — весь трафик (нужен администратор)") if WIN else tr("TUN — весь трафик"))])),
             ("kill_switch", None, self._check(s.kill_switch, "Kill switch")),
             (None, None, _hint(tr("TUN: strict route — блокирует DNS мимо туннеля и IPv6, если туннель "
                                   "его не несёт (Windows Filtering Platform). "
+                                  "Прокси: при падении ядра прокси остаётся включённым, и трафик не уходит "
+                                  "напрямую.") if WIN else
+                               tr("TUN: strict route — трафик мимо туннеля, включая DNS и IPv6, блокируется. "
                                   "Прокси: при падении ядра прокси остаётся включённым, и трафик не уходит "
                                   "напрямую."))),
             ("proxy_env", None, self._check(s.proxy_env, tr("Прокси для консольных программ (HTTP_PROXY / "
                                                             "HTTPS_PROXY)"))),
             (None, None, _hint(tr("Режим прокси: Claude Code, git, curl, npm и другие программы, которые не "
                                   "видят системный прокси Windows, тоже пойдут через VPN. Действует на программы, "
-                                  "запущенные после подключения; при отключении переменные убираются."))),
+                                  "запущенные после подключения; при отключении переменные убираются.") if WIN else
+                               tr("Режим прокси: git, curl, npm и другие консольные программы тоже пойдут через "
+                                  "VPN. Действует на программы, запущенные после подключения (в новом окне "
+                                  "терминала); при отключении переменные убираются."))),
             ("socks_port", tr("SOCKS-порт"), self._spin(s.socks_port, 1, 65535)),
             ("http_port", tr("HTTP-порт"), self._spin(s.http_port, 1, 65535)),
             ("allow_lan", None, self._check(s.allow_lan, tr("Разрешить подключения из локальной сети"))),
@@ -113,7 +123,8 @@ class SettingsDialog(QDialog):
             ("ping_timeout", tr("Таймаут пинга, с"), self._spin(s.ping_timeout, 1, 30)),
         ]), tr("Подписки"))
         tabs.addTab(self._page([
-            ("autostart", None, self._check(s.autostart, tr("Запускать вместе с Windows"))),
+            ("autostart", None, self._check(s.autostart, tr("Запускать вместе с Windows") if WIN
+                                                    else tr("Запускать вместе с системой"))),
             ("start_minimized", None, self._check(s.start_minimized, tr("Запускать свёрнутым в трей"))),
             ("auto_connect", None, self._check(s.auto_connect, tr("Подключаться при запуске"))),
             ("minimize_to_tray", None, self._check(s.minimize_to_tray, tr("Закрытие окна сворачивает в трей"))),
@@ -128,7 +139,7 @@ class SettingsDialog(QDialog):
                                   app=paths.APP_NAME, version=paths.VERSION,
                                   kind="portable" if paths.PORTABLE else tr("установлен") if paths.UNINSTALLER
                                   else tr("без установки"),
-                                  rights=tr("администратор") if winsys.is_admin() else tr("обычные права")))),
+                                  rights=tr("администратор") if osys.is_admin() else tr("обычные права")))),
             (None, None, self._app_buttons()),
         ]), tr("Приложение"))
 

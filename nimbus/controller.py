@@ -11,7 +11,8 @@ from .i18n import plural, tr
 from .lazy import httpx
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from . import balancer, config_builder, exit_ip, paths, ping, subscription, updater, winsys
+from . import balancer, config_builder, exit_ip, paths, ping, subscription, updater
+from .platform import current as osys
 from .core import CoreError, XrayCore, free_port, restore_proxy_after_crash, test_config
 from .settings import Settings
 from .store import Balancer, Group, Server, Store, Subscription, new_id
@@ -209,10 +210,10 @@ class Controller(QObject):
             self.message.emit("error", tr("В балансировщике «{name}» нет серверов: добавьте их через правый клик → "
                                           "«Изменить…».", name=bal.name))
             return
-        if self.settings.tunnel_mode == "tun" and not winsys.is_admin():
+        if self.settings.tunnel_mode == "tun" and not osys.tun_allowed():
             self.need_admin.emit()
             return
-        for exe in (paths.XRAY_EXE, paths.SINGBOX_EXE if self.settings.tunnel_mode == "tun" else None):
+        for exe in (paths.XRAY_EXE, osys.singbox_path() if self.settings.tunnel_mode == "tun" else None):
             if exe and not exe.exists():
                 self.message.emit("error", tr("Не найдено ядро: {exe}", exe=exe))
                 return
@@ -223,14 +224,15 @@ class Controller(QObject):
         def work():
             egress = ""
             if s.tunnel_mode == "tun":
-                found = winsys.default_egress(config_builder.TUN_NAME)
+                found = osys.default_egress(config_builder.TUN_NAME)
                 if found is None:
                     raise CoreError(tr("нет активного подключения к интернету"))
                 egress, forwarding = found
                 if forwarding:
                     # Windows ignores the adapter binding on a forwarding adapter.
                     self._ui(lambda _: self.message.emit("error", ICS_WARNING))
-            built = config_builder.build(server, s, free_port(), egress=egress)
+            # Linux: Xray isn't bound to the adapter; sing-box sends its traffic straight out.
+            built = config_builder.build(server, s, free_port(), egress=egress if osys.BIND_EGRESS else "")
             if api_port:
                 balancer.enable_api(built.config, api_port)
             test_config(built.config)
@@ -295,7 +297,7 @@ class Controller(QObject):
                 self.message.emit("info", tr("Сеть сменилась ({bound} → {new}), переподключение…",
                                              bound=bound, new=found[0]))
                 self.reconnect()
-        self.run_async(lambda: winsys.default_egress(config_builder.TUN_NAME), done, fail=lambda e: None)
+        self.run_async(lambda: osys.default_egress(config_builder.TUN_NAME), done, fail=lambda e: None)
 
     def _core_died(self, code: int) -> None:
         """Xray exited without us asking."""
@@ -398,11 +400,11 @@ class Controller(QObject):
             self.core.restore_proxy()  # lift a block left by a crash
         if "autostart" in changed:
             try:
-                winsys.set_autostart(new.autostart, paths.APP_NAME)
+                osys.set_autostart(new.autostart, paths.APP_NAME)
             except OSError as e:
                 self.message.emit("error", tr("Автозапуск: {e}", e=e))
         if changed & CONFIG_KEYS and self.state == "connected":
-            if new.tunnel_mode == "tun" and not winsys.is_admin():
+            if new.tunnel_mode == "tun" and not osys.tun_allowed():
                 self.disconnect()
                 self.need_admin.emit()
             else:

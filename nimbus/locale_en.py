@@ -642,6 +642,29 @@ TEXTS = {
     "эта копия не обновляется сама": "this copy doesn't update itself",
     "в архиве недопустимый путь: {member}": "the archive has a forbidden path: {member}",
     "загрузка отменена": "download cancelled",
+    # -- Linux ----------------------------------------------------------------------------------------
+    "Разрешить режим TUN": "Allow TUN mode",
+    "Режиму TUN нужны права на сетевой адаптер и маршруты. Nimbus один раз попросит пароль администратора и "
+    "выдаст эти права только ядру sing-box. Продолжить?":
+        "TUN mode needs rights to a network adapter and routes. Nimbus asks for the administrator password "
+        "once and gives these rights to the sing-box core only. Continue?",
+    "Продолжить": "Continue",
+    "Права для режима TUN не выданы.": "TUN mode rights weren't granted.",
+    "Весь трафик компьютера, включая игры. Один раз попросит пароль администратора":
+        "All of the computer's traffic, games included. Asks for the administrator password once",
+    "Все файлы (*)": "All files (*)",
+    "Папка программы или игры — учитываются все программы в ней": "A program or game folder: all programs in it count",
+    "TUN: strict route — трафик мимо туннеля, включая DNS и IPv6, блокируется. Прокси: при падении ядра "
+    "прокси остаётся включённым, и трафик не уходит напрямую.":
+        "TUN: strict route blocks traffic outside the tunnel, DNS and IPv6 included. Proxy: if the core "
+        "crashes, the proxy stays on and traffic doesn't go direct.",
+    "Режим прокси: git, curl, npm и другие консольные программы тоже пойдут через VPN. Действует на "
+    "программы, запущенные после подключения (в новом окне терминала); при отключении переменные убираются.":
+        "Proxy mode: git, curl, npm and other console programs go through the VPN too. Applies to programs "
+        "started after connecting (in a new terminal window); the variables are removed on disconnect.",
+    "Запускать вместе с системой": "Start with the system",
+    "TUN — весь трафик": "TUN — all traffic",
+    "не удалось заменить {name}: {err}": "couldn't replace {name}: {err}",
 }
 
 # plural(n, one, few, many) in English: the Russian "one" form -> (singular, plural).

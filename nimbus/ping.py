@@ -12,7 +12,8 @@ from typing import Callable
 import certifi
 from .lazy import httpx
 
-from . import paths, winsys
+from . import paths
+from .platform import current as osys
 from .config_builder import NON_PROXY, proxy_outbounds
 from .core import free_port, port_in_use, xray_env
 from .store import Server
@@ -54,7 +55,7 @@ def _ssl_context() -> ssl.SSLContext:
 
 
 def _measure(port: int, url: str, timeout: float) -> int:
-    winsys.background_thread()
+    osys.background_thread()
     proxy = f"http://127.0.0.1:{port}"
     # trust_env=False: proxy/certificate variables on the user's machine must not get in the way.
     for _ in range(2):  # a second try covers a handshake that just happened to stall
@@ -120,7 +121,7 @@ def _run(servers: list[Server], url: str, timeout: float, result: dict[str, int]
     proc = subprocess.Popen([str(paths.XRAY_EXE), "run", "-c", str(path)],
                             stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                             cwd=str(paths.CORE_DIR), env=xray_env(),
-                            creationflags=winsys.NO_WINDOW | winsys.BELOW_NORMAL)
+                            **osys.POPEN_BACKGROUND)
     try:
         if not _wait_ready(proc, [port for _, port in probes]):
             return False

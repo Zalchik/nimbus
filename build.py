@@ -87,9 +87,14 @@ def make_setup(app_dir: Path, icon: Path) -> Path | None:
     return DIST / f"Nimbus-{VERSION}-setup.exe"
 
 
-def write_checksums(files: list[Path], out: Path) -> None:
-    """sha256sum-style list ("<hex>  <name>") that the in-app updater checks downloads against."""
+def write_checksums(files: list[Path], out: Path, keep: bool = False) -> None:
+    """sha256sum-style list ("<hex>  <name>") that the in-app updater checks downloads against.
+    keep: lines for other files already in `out` stay (the Linux build adds its AppImage)."""
+    names = {f.name for f in files}
     lines = []
+    if keep and out.exists():
+        lines = [line for line in out.read_text("utf-8").splitlines()
+                 if line.strip() and line.split()[-1].lstrip("*") not in names]
     for f in files:
         h = hashlib.sha256()
         with open(f, "rb") as fh:

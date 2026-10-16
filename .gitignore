@@ -10,6 +10,8 @@ release-*/
 vendor/xray/*.exe
 vendor/xray/*.dll
 vendor/xray/*.dat
+vendor/xray/xray
+vendor/xray/sing-box
 # Local data of a portable run
 data/
 portable

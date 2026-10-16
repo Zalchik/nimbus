@@ -1,4 +1,4 @@
-"""Windows integration: system proxy, elevation, autostart."""
+"""Windows integration: system proxy, elevation, autostart. linux.py has the same names."""
 from __future__ import annotations
 
 import ctypes
@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 import winreg
+from pathlib import Path
 
 INET_KEY = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -17,6 +18,31 @@ BYPASS = ("localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172
           "192.168.*;<local>")
 NO_WINDOW = 0x08000000
 BELOW_NORMAL = 0x00004000   # process priority class for background work
+
+OS_NAME = "Windows"
+POPEN = {"creationflags": NO_WINDOW}                       # Popen kwargs: no console window
+POPEN_BACKGROUND = {"creationflags": NO_WINDOW | BELOW_NORMAL}
+UI_FONTS = ("Segoe UI",)                    # if the bundled fonts don't load, the first one found
+MONO_FONTS = ("Cascadia Mono", "Consolas")
+# TUN needs the whole app elevated (relaunch_as_admin); Xray's sockets are bound to the physical
+# adapter so they don't loop back into the tunnel.
+TUN_RELAUNCH = True
+BIND_EGRESS = True
+
+
+def exe_name(name: str) -> str:
+    return name + ".exe"
+
+
+def data_dir(app: str) -> Path:
+    return Path(os.environ.get("APPDATA", Path.home())) / app
+
+
+def machine_id() -> str:
+    """Windows' MachineGuid."""
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography", 0,
+                        winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
+        return str(winreg.QueryValueEx(k, "MachineGuid")[0])
 
 
 def _refresh_wininet() -> None:
@@ -288,6 +314,24 @@ def is_admin() -> bool:
         return False
 
 
+def tun_allowed() -> bool:
+    return is_admin()
+
+
+def grant_tun() -> bool:
+    """Linux only: Windows elevates the whole app instead (TUN_RELAUNCH)."""
+    return False
+
+
+def singbox_path() -> Path:
+    from .. import paths
+    return paths.SINGBOX_EXE
+
+
+def single_instance_lock(name: str):
+    return single_instance_mutex(name)
+
+
 def relaunch_as_admin(extra_args: list[str]) -> bool:
     """Start an elevated copy of the app. Returns False if the user declined UAC."""
     if getattr(sys, "frozen", False):
@@ -300,14 +344,17 @@ def relaunch_as_admin(extra_args: list[str]) -> bool:
     return rc > 32
 
 
+def app_command(extra_args: list[str]) -> list[str]:
+    """How to start this copy of the app."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable, *extra_args]
+    pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+    return [pythonw, os.path.abspath(sys.argv[0]), *extra_args]
+
+
 def relaunch(extra_args: list[str]) -> None:
     """Start another copy of the app with the same rights as this one."""
-    if getattr(sys, "frozen", False):
-        args = [sys.executable, *extra_args]
-    else:
-        pythonw = sys.executable.replace("python.exe", "pythonw.exe")
-        args = [pythonw, os.path.abspath(sys.argv[0]), *extra_args]
-    subprocess.Popen(args, close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
+    subprocess.Popen(app_command(extra_args), close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
 
 
 def _launch_command() -> str:
@@ -344,7 +391,7 @@ def url_scheme_command(scheme: str) -> str:
         return ""
 
 
-def register_url_scheme(scheme: str, title: str) -> None:
+def register_url_scheme(scheme: str, title: str, icon: str = "") -> None:
     """Make <scheme>:// links open this exe (per user, no administrator rights needed)."""
     if url_scheme_command(scheme) == _open_command():
         return

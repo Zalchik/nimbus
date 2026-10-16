@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (
 
 from .. import i18n
 from ..i18n import tr
-from .. import deeplink, paths, qr, share, winsys
+from .. import deeplink, paths, qr, share
+from ..platform import current as osys
 from ..config_builder import active_preset, provider_routing
 from ..controller import Controller
 from ..store import Balancer, Server
@@ -338,7 +339,9 @@ class MainWindow(QMainWindow):
         self.mode_seg = Segmented([
             ("proxy", tr("Системный прокси"), tr("Браузеры и программы, которые используют системный прокси. "
                                                  "Без прав администратора")),
-            ("tun", "TUN", tr("Весь трафик компьютера, включая игры. Нужны права администратора"))])
+            ("tun", "TUN", tr("Весь трафик компьютера, включая игры. Нужны права администратора")
+                    if osys.OS_NAME == "Windows" else
+                    tr("Весь трафик компьютера, включая игры. Один раз попросит пароль администратора"))])
         self.mode_seg.changed.connect(self._mode_changed)
         v.addWidget(self.mode_seg)
         v.addSpacing(10)
@@ -1332,7 +1335,7 @@ class MainWindow(QMainWindow):
         self.list.drop_cache()
         QPixmapCache.clear()
         gc.collect()
-        winsys.trim_memory()
+        osys.trim_memory()
 
     def closeEvent(self, event) -> None:
         if self.ctl.settings.minimize_to_tray and not self.really_quit:

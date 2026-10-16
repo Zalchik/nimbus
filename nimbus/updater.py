@@ -1,9 +1,11 @@
 """Updates from GitHub Releases: find a newer release, download and check it, then hand over to
-the installer (installed copy) or to the swap helper (portable copy, see swap.py)."""
+the installer (installed copy) or to the swap helper (portable copy, see swap.py). On Linux the
+AppImage is replaced in place."""
 from __future__ import annotations
 
 import calendar
 import hashlib
+import os
 import re
 import shutil
 import subprocess
@@ -19,6 +21,7 @@ from .i18n import tr
 from .lazy import httpx
 
 from . import paths
+from .platform import current as osys
 
 REPO = "Zalchik/nimbus"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -106,14 +109,18 @@ def latest(proxy: str | None = None) -> Release | None:
 # -- what to download ---------------------------------------------------------------------------
 def install_kind() -> str:
     """How this copy updates: "setup" (installed: run the new installer), "portable" (a folder of
-    files: swap them), "" (running from source: only the release page)."""
+    files: swap them), "appimage" (Linux: replace the AppImage), "" (running from source, or a
+    Linux build outside an AppImage: only the release page)."""
     if not getattr(sys, "frozen", False):
         return ""
+    if osys.OS_NAME != "Windows":
+        return "appimage" if os.environ.get("APPIMAGE") else ""
     return "setup" if paths.UNINSTALLER else "portable"
 
 
 def asset_name(version: str, kind: str) -> str:
-    return {"setup": f"Nimbus-{version}-setup.exe", "portable": f"Nimbus-{version}-portable.zip"}[kind]
+    return {"setup": f"Nimbus-{version}-setup.exe", "portable": f"Nimbus-{version}-portable.zip",
+            "appimage": f"Nimbus-{version}-x86_64.AppImage"}[kind]
 
 
 def parse_checksums(text: str) -> dict[str, str]:
@@ -230,7 +237,7 @@ def prepare(release: Release, kind: str, proxy: str | None = None,
             cancelled: Callable[[], bool] = lambda: False) -> Path:
     """Download and check the update; for a portable copy also unpack it. Returns what
     install() takes: the installer, or the unpacked Nimbus folder."""
-    if kind not in ("setup", "portable"):
+    if kind not in ("setup", "portable", "appimage"):
         raise UpdateError(tr("эта копия не обновляется сама"))
     path = download(release, kind, proxy, progress, cancelled)
     return unpack(path) if kind == "portable" else path
@@ -240,5 +247,24 @@ def install(prepared: Path, kind: str, pid: int, connect: bool) -> None:
     """Start whatever replaces this copy once it has quit (the caller quits right after)."""
     if kind == "setup":
         _start(setup_args(prepared, connect), prepared.parent)
+    elif kind == "appimage":
+        target = replace_appimage(prepared, Path(os.environ["APPIMAGE"]))
+        # --restarted: the new copy waits until this one has let go of the single-instance lock.
+        _start([str(target), "--updated", "--restarted"] + (["--connect"] if connect else []), target.parent)
     else:
         _start(swap_args(prepared, pid, paths.APP_DIR, connect), prepared)
+
+
+def replace_appimage(new: Path, target: Path) -> Path:
+    """Put the downloaded AppImage in place of the running one. A running AppImage can be
+    replaced: the old file stays readable until it exits. The copy lands next to the target
+    first, so the final rename is atomic."""
+    tmp = target.with_name(f".{target.name}.new")
+    try:
+        shutil.copyfile(new, tmp)
+        tmp.chmod(0o755)
+        os.replace(tmp, target)
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        raise UpdateError(tr("не удалось заменить {name}: {err}", name=target.name, err=e.strerror or e))
+    return target

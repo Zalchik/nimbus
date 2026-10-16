@@ -15,7 +15,8 @@ import socket
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from . import links, winsys
+from . import links
+from .platform import current as osys
 from .settings import Settings
 from .store import Server
 
@@ -431,13 +432,14 @@ def _sb_apps(apps: list[dict]) -> dict:
     """sing-box process matchers for a preset's apps. Folders match by path, case-insensitively."""
     names: list[str] = []
     regexes: list[str] = []
+    sep, other = ("\\", "/") if osys.OS_NAME == "Windows" else ("/", "\\")
     for app in apps:
-        path = str(app.get("path", "")).replace("/", "\\")
+        path = str(app.get("path", "")).replace(other, sep)
         if app.get("kind") == "dir":
-            regexes.append("(?i)^" + re.escape(path.rstrip("\\") + "\\"))
+            regexes.append("(?i)^" + re.escape(path.rstrip(sep) + sep))
             exes = app.get("exes", [])
         else:
-            exes = [path.rsplit("\\", 1)[-1]]
+            exes = [path.rsplit(sep, 1)[-1]]
         for exe in exes:
             for v in (exe, exe.lower()):
                 if v and v not in names:
@@ -455,7 +457,7 @@ _SB_LOG = {"error": "error", "warning": "warn", "info": "info", "debug": "debug"
 
 def tun_config(s: Settings, bridge: Bridge, domains: list[str], ru: bool) -> dict:
     """sing-box config: Throne's TUN inbound, hijack-dns, and everything else to Xray."""
-    v6 = winsys.ipv6_enabled()
+    v6 = osys.ipv6_enabled()
     exclude = ["127.0.0.0/8", "255.255.255.255/32"]
     if s.bypass_private:
         exclude += [r for r in PRIVATE_RANGES if v6 or ":" not in r]
@@ -495,7 +497,7 @@ def tun_config(s: Settings, bridge: Bridge, domains: list[str], ru: bool) -> dic
     rules: list[dict] = [
         # Xray's own sockets are bound past the tunnel; whatever still lands here (its DNS under
         # strict_route, latency tests) goes straight out instead of back into Xray.
-        {"process_name": ["xray.exe"], "action": "route", "outbound": "direct"},
+        {"process_name": [osys.exe_name("xray")], "action": "route", "outbound": "direct"},
         {"action": "sniff"},
         {"protocol": "dns", "action": "hijack-dns"},
     ]

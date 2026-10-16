@@ -12,7 +12,8 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from ..i18n import tr
-from .. import balancer, deeplink, paths, updater, winsys
+from .. import balancer, deeplink, paths, updater
+from ..platform import current as osys
 from ..controller import Controller
 from ..settings import Settings
 from . import flags, icons, theme
@@ -57,7 +58,7 @@ class App:
         # An elevated relaunch may start before the old instance has exited; wait for it.
         deadline = time.time() + (8 if self.args & {"--elevated", "--restarted"} else 0)
         while True:
-            self._mutex = winsys.single_instance_mutex(INSTANCE_KEY)
+            self._mutex = osys.single_instance_lock(INSTANCE_KEY)
             if self._mutex:
                 break
             if time.time() >= deadline:
@@ -114,7 +115,7 @@ class App:
     @staticmethod
     def _log_startup() -> None:
         """Append how long the window took to appear to logs/startup.log (last 50 launches)."""
-        line = f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {paths.VERSION}  window shown in {winsys.process_age_ms()} ms\n"
+        line = f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {paths.VERSION}  window shown in {osys.process_age_ms()} ms\n"
         log = paths.LOG_DIR / "startup.log"
         try:
             old = log.read_text("utf-8").splitlines(keepends=True)[-49:] if log.exists() else []
@@ -314,7 +315,10 @@ class App:
         """nimbus:// links open this copy (an installed one also gets it from the installer)."""
         if getattr(sys, "frozen", False):
             try:
-                winsys.register_url_scheme(deeplink.SCHEME, paths.APP_NAME)
+                icon = paths.DATA_DIR / "nimbus.png"   # Linux: for the .desktop entry
+                if osys.OS_NAME != "Windows" and not icon.exists():
+                    theme.app_pixmap(256).save(str(icon), "PNG")
+                osys.register_url_scheme(deeplink.SCHEME, paths.APP_NAME, str(icon))
             except OSError:
                 pass
 
@@ -382,21 +386,24 @@ class App:
         gone = not _signal_running_instance(b"quit")
         deadline = time.time() + timeout
         while not gone and time.time() < deadline:
-            gone = bool(winsys.single_instance_mutex(INSTANCE_KEY))
+            gone = bool(osys.single_instance_lock(INSTANCE_KEY))
             if not gone:
                 time.sleep(0.25)
         if gone:
             from ..core import restore_proxy_after_crash
             restore_proxy_after_crash()
-        if "--uninstall" in self.args and winsys.autostart_is_this_exe(paths.APP_NAME):
-            winsys.set_autostart(False, paths.APP_NAME)
+        if "--uninstall" in self.args and osys.autostart_is_this_exe(paths.APP_NAME):
+            osys.set_autostart(False, paths.APP_NAME)
         if "--uninstall" in self.args:
-            winsys.unregister_url_scheme(deeplink.SCHEME)
+            osys.unregister_url_scheme(deeplink.SCHEME)
         return 0 if gone else 1
 
     # -- elevation -----------------------------------------------------------------------
     def _ask_elevation(self) -> None:
         self.show_window()
+        if not osys.TUN_RELAUNCH:
+            self._grant_tun()
+            return
         if not ask(self.win, tr("Нужны права администратора"),
                    tr("Режим TUN создаёт виртуальный сетевой адаптер и меняет маршруты — для этого Windows "
                       "требует права администратора. Перезапустить Nimbus от имени администратора?"),
@@ -404,11 +411,27 @@ class App:
             return
         self.ctl.shutdown()
         self.server.close()
-        if winsys.relaunch_as_admin(["--elevated", "--connect"]):
+        if osys.relaunch_as_admin(["--elevated", "--connect"]):
             self.qt.exit(0)
         else:
             self.server.listen(INSTANCE_KEY)
             self.win.toaster.show(tr("Запуск от имени администратора отменён."), error=True)
+
+    def _grant_tun(self) -> None:
+        """Linux: sing-box gets the network rights it needs once (a password prompt); the
+        window itself never runs as root."""
+        if not ask(self.win, tr("Разрешить режим TUN"),
+                   tr("Режиму TUN нужны права на сетевой адаптер и маршруты. Nimbus один раз попросит пароль "
+                      "администратора и выдаст эти права только ядру sing-box. Продолжить?"),
+                   tr("Продолжить")):
+            return
+
+        def done(ok):
+            if ok:
+                self.ctl.connect()
+            else:
+                self.win.toaster.show(tr("Права для режима TUN не выданы."), error=True)
+        self.ctl.run_async(osys.grant_tun, done)
 
     def restart(self) -> None:
         """Start a fresh copy (e.g. in another language) and quit; a connection comes back."""
@@ -416,7 +439,7 @@ class App:
 
         def go():
             self.server.close()   # the new copy waits for the single-instance mutex, not the pipe
-            winsys.relaunch(args)
+            osys.relaunch(args)
             self.quit()
         self.ctl.disconnect(then=go)
 

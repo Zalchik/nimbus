@@ -15,10 +15,13 @@ from PySide6.QtWidgets import (
 from .. import apps, i18n
 from ..i18n import tr
 from ..config_builder import site_entry
+from ..platform import current as osys
 from ..store import new_id
 from . import icons, theme
 from .dialogs import Dialog, ask
 from .widgets import Segmented, Spinner, caption
+
+WIN = osys.OS_NAME == "Windows"
 
 MODE_TEXT = {
     "bypass": tr("Отмеченные программы и сайты работают напрямую, без VPN. Всё остальное идёт через VPN."),
@@ -352,14 +355,19 @@ class PresetDialog(Dialog):
         self._sync_count()
 
     def _add_file(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(self, tr("Выберите программу"), os.environ.get("ProgramFiles", ""),
-                                                tr("Программы (*.exe);;Все файлы (*)"))
+        if WIN:
+            start, filters = os.environ.get("ProgramFiles", ""), tr("Программы (*.exe);;Все файлы (*)")
+        else:
+            start, filters = "/usr/bin", tr("Все файлы (*)")
+        paths, _ = QFileDialog.getOpenFileNames(self, tr("Выберите программу"), start, filters)
         for path in paths:
             self._add_picked(apps.from_path(path))
 
     def _add_folder(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, tr("Папка программы или игры — учитываются все её .exe"),
-                                                os.environ.get("ProgramFiles", ""))
+        path = QFileDialog.getExistingDirectory(
+            self, tr("Папка программы или игры — учитываются все её .exe") if WIN
+            else tr("Папка программы или игры — учитываются все программы в ней"),
+            os.environ.get("ProgramFiles", "") if WIN else os.path.expanduser("~"))
         if path:
             self._add_picked(apps.from_path(path))
 

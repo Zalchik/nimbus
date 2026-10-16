@@ -3,6 +3,8 @@ import os
 import sys
 from pathlib import Path
 
+from .platform import current as osys
+
 APP_NAME = "Nimbus"
 VERSION = "0.2.0"
 
@@ -30,9 +32,10 @@ def _writable(d: Path) -> bool:
 
 # The portable build ships a "portable" marker file next to the exe: all data stays in "data"
 # beside it, so the folder can be moved or carried on a USB stick. The installed build has no
-# marker and keeps data in %APPDATA%\Nimbus, which survives updates and reinstalls.
-# A portable copy put somewhere read-only (e.g. Program Files) falls back to %APPDATA%.
-APPDATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
+# marker and keeps data in %APPDATA%\Nimbus (Linux: ~/.config/Nimbus), which survives updates
+# and reinstalls. A portable copy put somewhere read-only (e.g. Program Files, or inside the
+# AppImage) falls back to that.
+APPDATA_DIR = osys.data_dir(APP_NAME)
 PORTABLE = False
 if os.environ.get("NIMBUS_DATA_DIR"):
     DATA_DIR = Path(os.environ["NIMBUS_DATA_DIR"])
@@ -45,8 +48,8 @@ else:
 # Set up by the installer: its uninstaller sits next to the exe (Inno Setup names it unins000.exe).
 UNINSTALLER = next(iter(sorted(APP_DIR.glob("unins*.exe"))), None) if not PORTABLE else None
 
-XRAY_EXE = CORE_DIR / "xray.exe"
-SINGBOX_EXE = CORE_DIR / "sing-box.exe"   # TUN mode only
+XRAY_EXE = CORE_DIR / osys.exe_name("xray")
+SINGBOX_EXE = CORE_DIR / osys.exe_name("sing-box")   # TUN mode only (Linux runs a copy: osys.singbox_path())
 GEO_DIR = DATA_DIR / "geo"          # user-updated geo files override the bundled ones
 LOG_DIR = DATA_DIR / "logs"
 RUN_DIR = DATA_DIR / "run"

@@ -14,6 +14,7 @@ from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPainte
 
 from ..i18n import tr
 from .. import paths
+from ..platform import current as osys
 
 PALETTES = {
     "dark": dict(
@@ -126,7 +127,7 @@ def apply(name: str) -> None:
 
 
 def load_fonts() -> None:
-    """Bundled fonts first; if they're missing, an installed Montserrat (or Segoe UI) is used.
+    """Bundled fonts first; if they're missing, an installed Montserrat (or the system's font) is used.
     QFontDatabase.families() would enumerate every font in Windows (slow right after a reboot
     on a PC with many fonts), so it's asked only when a bundled font didn't load."""
     global FONT, MONO
@@ -137,9 +138,9 @@ def load_fonts() -> None:
         return
     families = set(QFontDatabase.families())
     if FONT not in loaded and FONT not in families:
-        FONT = "Segoe UI"
+        FONT = next((f for f in osys.UI_FONTS if f in families), osys.UI_FONTS[-1])
     if MONO not in loaded and MONO not in families:
-        MONO = "Cascadia Mono" if "Cascadia Mono" in families else "Consolas"
+        MONO = next((f for f in osys.MONO_FONTS if f in families), osys.MONO_FONTS[-1])
 
 
 def font(pt: float, weight: QFont.Weight = QFont.Normal, *, tabular: bool = False,
@@ -173,8 +174,7 @@ def alpha(c: str, a: float) -> QColor:
 
 def frame(window) -> None:
     """Title bar of a top-level window in the colors of the theme."""
-    from .. import winsys
-    winsys.title_bar(int(window.winId()), is_dark(), BG, BORDER if is_dark() else BORDER_2)
+    osys.title_bar(int(window.winId()), is_dark(), BG, BORDER if is_dark() else BORDER_2)
 
 
 def stylesheet() -> str:

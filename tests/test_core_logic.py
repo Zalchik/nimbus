@@ -302,7 +302,7 @@ class ExitIpTests(unittest.TestCase):
 class TunAndInstanceTests(unittest.TestCase):
     def test_tun_without_ipv6_is_ipv4_only(self):
         """With IPv6 off in Windows the adapter can't get an IPv6 address."""
-        from nimbus import winsys
+        from nimbus.platform import current as winsys
         old = winsys.ipv6_enabled
         server = Server(id="x", name="r", link=LINKS["vless-reality"])
         try:
@@ -333,7 +333,7 @@ class TunAndInstanceTests(unittest.TestCase):
         self.assertTrue(inbound["auto_route"])
         self.assertFalse(inbound["strict_route"])
         self.assertEqual(tun["route"]["final"], "xray")
-        self.assertEqual(tun["route"]["rules"][0]["process_name"], ["xray.exe"])
+        self.assertEqual(tun["route"]["rules"][0]["process_name"], [paths.XRAY_EXE.name])
         self.assertIn({"protocol": "dns", "action": "hijack-dns"}, tun["route"]["rules"])
         for ob in cfg["outbounds"]:
             want = None if ob["protocol"] == "blackhole" else "Ethernet"
@@ -371,7 +371,8 @@ class TunAndInstanceTests(unittest.TestCase):
                 rule = built.tun["route"]["rules"][1]
                 self.assertEqual(rule["outbound"], out)
                 self.assertEqual(rule["process_name"], ["steam.exe", "cs2.exe"])
-                self.assertEqual(rule["process_path_regex"], [r"(?i)^D:\\Games\\CS\\"])
+                self.assertEqual(rule["process_path_regex"], [r"(?i)^D:\\Games\\CS\\" if sys.platform == "win32"
+                                                              else r"(?i)^D:/Games/CS/"])
                 app_in = [i for i in built.config["inbounds"] if i["tag"] == "tun-app"]
                 self.assertEqual(bool(app_in), mode == "vpn")
                 if mode == "vpn":
@@ -394,7 +395,7 @@ class TunAndInstanceTests(unittest.TestCase):
         self.assertEqual(f("localhost", False), {"type": "local"})
 
     def test_default_egress_found(self):
-        from nimbus import winsys
+        from nimbus.platform import current as winsys
         found = winsys.default_egress(config_builder.TUN_NAME)
         if found is None:
             self.skipTest("no default route on this machine")
@@ -412,17 +413,23 @@ class TunAndInstanceTests(unittest.TestCase):
                 with self.subTest(server=srv.id, settings=vname):
                     self.assertEqual(singbox_ok(config_builder.build(srv, s, 1, egress="Ethernet").tun), "")
 
-    def test_single_instance_mutex(self):
-        import ctypes
-        from nimbus import winsys
+    def test_single_instance_lock(self):
+        from nimbus.platform import current as osys
+        if sys.platform == "win32":
+            import ctypes
+
+            def release(h):
+                ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(h))
+        else:
+            release = os.close
         name = f"nimbus-test-{id(self)}"
-        first = winsys.single_instance_mutex(name)
+        first = osys.single_instance_lock(name)
         self.assertTrue(first)
-        self.assertIsNone(winsys.single_instance_mutex(name))
-        ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(first))
-        again = winsys.single_instance_mutex(name)
+        self.assertIsNone(osys.single_instance_lock(name))
+        release(first)
+        again = osys.single_instance_lock(name)
         self.assertTrue(again)
-        ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(again))
+        release(again)
 
 
 class GroupAndRoutingTests(unittest.TestCase):
@@ -569,8 +576,9 @@ class PresetTests(unittest.TestCase):
         cfg = config_builder.build(provider, replace(s, route_preset="p1"), 1).config
         self.assertIn({"domain": ["domain:example.ru"], "outboundTag": "direct"}, cfg["routing"]["rules"])
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows shortcuts")
     def test_lnk_parsing(self):
-        from nimbus import apps
+        from nimbus.platform import apps_windows as apps
         roots = apps._shortcut_dirs()
         import glob
         lnks = [p for r in roots for p in glob.glob(os.path.join(r, "**", "*.lnk"), recursive=True)][:50]
@@ -585,8 +593,16 @@ class ProxyEnvTests(unittest.TestCase):
         """Claude Code and other console programs ignore the Windows proxy and read HTTPS_PROXY;
         whatever the user had comes back on disconnect, after a crash too."""
         from pathlib import Path
-        from nimbus import core, winsys
-        reg = {"HTTP_PROXY": None, "HTTPS_PROXY": ["http://corp:3128", 1], "NO_PROXY": None}
+        from nimbus import core
+        from nimbus.platform import current as winsys
+        # Windows keeps [value, registry type], Linux plain strings.
+        corp = ["http://corp:3128", 1] if sys.platform == "win32" else "http://corp:3128"
+
+        def value(v):
+            return v[0] if isinstance(v, list) else v
+        reg = {name: None for name in winsys.ENV_VARS}
+        reg["HTTPS_PROXY"] = corp
+        before = dict(reg)
         saved = (winsys.read_env_proxy, winsys.write_env_proxy, core.ENV_BACKUP, dict(os.environ))
         with tempfile.TemporaryDirectory() as d:
             winsys.read_env_proxy = lambda: dict(reg)
@@ -595,11 +611,11 @@ class ProxyEnvTests(unittest.TestCase):
             try:
                 core.ENV_BACKUP.write_text(json.dumps(winsys.read_env_proxy()), "utf-8")
                 winsys.enable_env_proxy(10809)
-                self.assertEqual(reg["HTTPS_PROXY"][0], "http://127.0.0.1:10809")
-                self.assertIn("127.0.0.1", reg["NO_PROXY"][0])
+                self.assertEqual(value(reg["HTTPS_PROXY"]), "http://127.0.0.1:10809")
+                self.assertIn("127.0.0.1", value(reg["NO_PROXY"]))
                 os.environ["HTTP_PROXY"] = "http://127.0.0.1:10809"   # inherited by a fresh start
                 core.restore_proxy_after_crash()
-                self.assertEqual(reg, {"HTTP_PROXY": None, "HTTPS_PROXY": ["http://corp:3128", 1], "NO_PROXY": None})
+                self.assertEqual(reg, before)
                 self.assertNotIn("HTTP_PROXY", os.environ)
                 self.assertFalse(core.ENV_BACKUP.exists())
             finally:
@@ -609,10 +625,26 @@ class ProxyEnvTests(unittest.TestCase):
 
 
 class ProxyRestoreTests(unittest.TestCase):
+    def test_dead_local_proxy_is_not_restored_linux(self):
+        """GNOME and KDE snapshots: a proxy at a dead local port isn't put back."""
+        import socket
+        from nimbus.platform import linux
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            dead = s.getsockname()[1]
+        saved = {"gnome": {"mode": "'manual'", "http.host": "'127.0.0.1'", "http.port": str(dead)},
+                 "kde": {"ProxyType": "1", "httpProxy": f"http://127.0.0.1 {dead}"}}
+        out = linux.without_dead_local_proxy(saved)
+        self.assertEqual((out["gnome"]["mode"], out["kde"]["ProxyType"]), ("'none'", "0"))
+        self.assertEqual(saved["gnome"]["mode"], "'manual'")   # the snapshot itself is left alone
+        corporate = {"gnome": {"mode": "'manual'", "http.host": "'proxy.corp'", "http.port": "3128"}}
+        self.assertEqual(linux.without_dead_local_proxy(corporate)["gnome"]["mode"], "'manual'")
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows registry")
     def test_dead_local_proxy_is_not_restored(self):
         import socket
         import winreg
-        from nimbus import winsys
+        from nimbus.platform import current as winsys
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0))
             dead = s.getsockname()[1]  # closed after the block: nothing listens there
@@ -904,7 +936,7 @@ class DeepLinkTests(unittest.TestCase):
     def test_url_scheme_registration(self):
         if sys.platform != "win32":
             self.skipTest("Windows registry")
-        from nimbus import winsys
+        from nimbus.platform import current as winsys
         scheme = "nimbus-test-scheme"
         try:
             winsys.register_url_scheme(scheme, "Nimbus test")
@@ -975,6 +1007,109 @@ class I18nTests(unittest.TestCase):
         self.assertEqual(i18n.resolve("ru"), "ru")
         self.assertIn(i18n.resolve("auto"), i18n.LANGUAGES)
         self.assertEqual(Settings().language, "auto")
+
+
+class PlatformTests(unittest.TestCase):
+    """The Windows and Linux modules offer the same interface. The Linux module loads on any
+    system, so most of its logic is checked here too."""
+    INTERFACE = {
+        "OS_NAME", "POPEN", "POPEN_BACKGROUND", "UI_FONTS", "MONO_FONTS", "TUN_RELAUNCH", "BIND_EGRESS",
+        "ENV_VARS", "exe_name", "data_dir", "machine_id",
+        "read_proxy", "write_proxy", "enable_proxy", "disable_proxy", "without_dead_local_proxy",
+        "read_env_proxy", "write_env_proxy", "enable_env_proxy", "default_egress", "ipv6_enabled",
+        "is_admin", "tun_allowed", "grant_tun", "singbox_path", "relaunch_as_admin",
+        "background_thread", "trim_memory", "process_age_ms", "app_command", "relaunch", "single_instance_lock",
+        "set_autostart", "autostart_is_this_exe", "register_url_scheme", "unregister_url_scheme",
+        "url_scheme_command", "title_bar",
+    }
+    APPS = {"App", "scan", "running", "fill_icons", "from_path", "main_exe", "entry"}
+
+    @staticmethod
+    def _names(module: str) -> set:
+        import ast
+        path = Path(__file__).resolve().parent.parent / "nimbus" / "platform" / f"{module}.py"
+        out = set()
+        for node in ast.parse(path.read_text("utf-8")).body:
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                out.add(node.name)
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                out |= {t.id for t in targets if isinstance(t, ast.Name)}
+            elif isinstance(node, ast.ImportFrom):
+                out |= {a.asname or a.name for a in node.names}
+        return out
+
+    def test_same_interface(self):
+        for module in ("windows", "linux"):
+            self.assertEqual(self.INTERFACE - self._names(module), set(), module)
+        for module in ("apps_windows", "apps_linux"):
+            self.assertEqual(self.APPS - self._names(module), set(), module)
+
+    def test_linux_routes(self):
+        from nimbus.platform import linux
+        table = ("Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n"
+                 "Nimbus\t00000000\t00000000\t0001\t0\t0\t0\t00000000\t0\t0\t0\n"
+                 "wlp2s0\t00000000\t0101A8C0\t0003\t0\t0\t600\t00000000\t0\t0\t0\n"
+                 "enp3s0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n"
+                 "enp3s0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n")
+        self.assertEqual(linux.parse_routes(table, "Nimbus"), ("enp3s0", False))
+        self.assertIsNone(linux.parse_routes(table.splitlines()[0], "Nimbus"))
+
+    def test_linux_desktop_entries(self):
+        from nimbus.platform import apps_linux, linux
+        with tempfile.TemporaryDirectory() as d:
+            entry = Path(d) / "x.desktop"
+            entry.write_text("[Desktop Entry]\nType=Application\nName=Firefox\nName[ru]=Файрфокс\n"
+                             "Exec=env MOZ=1 firefox %u\n[Desktop Action new]\nName=New window\n", "utf-8")
+            old = os.environ.get("LANG")
+            os.environ["LANG"] = "ru_RU.UTF-8"
+            try:
+                e = apps_linux._desktop_entry(str(entry))
+            finally:
+                os.environ.pop("LANG") if old is None else os.environ.__setitem__("LANG", old)
+            self.assertEqual((e["Name"], e["Exec"]), ("Файрфокс", "env MOZ=1 firefox %u"))
+            self.assertEqual(apps_linux._exec_target("flatpak run org.x.App"), "")
+            # autostart and nimbus:// entries go to the XDG folders
+            saved = {k: os.environ.get(k) for k in ("XDG_CONFIG_HOME", "XDG_DATA_HOME")}
+            os.environ["XDG_CONFIG_HOME"], os.environ["XDG_DATA_HOME"] = d, d
+            try:
+                linux.set_autostart(True, "Nimbus")
+                self.assertTrue(linux.autostart_is_this_exe("Nimbus"))
+                self.assertIn("--autostart", (Path(d) / "autostart" / "nimbus.desktop").read_text())
+                linux.set_autostart(False, "Nimbus")
+                self.assertFalse(linux.autostart_is_this_exe("Nimbus"))
+                linux.register_url_scheme("nimbus", "Nimbus")
+                self.assertTrue(linux.url_scheme_command("nimbus").endswith(" %u"))
+                linux.unregister_url_scheme("nimbus")
+                self.assertEqual(linux.url_scheme_command("nimbus"), "")
+            finally:
+                for k, v in saved.items():
+                    os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+
+    @unittest.skipUnless(sys.platform.startswith("linux") and os.environ.get("NIMBUS_TEST_GSETTINGS"),
+                         "changes the desktop's proxy: only in CI's throwaway D-Bus session")
+    def test_linux_gnome_proxy_roundtrip(self):
+        from nimbus.platform import linux
+        before = linux.read_proxy()
+        self.assertIn("gnome", before)
+        linux.enable_proxy(10809)
+        on = linux.read_proxy()["gnome"]
+        self.assertEqual((on["mode"], on["http.host"], on["http.port"]), ("'manual'", "'127.0.0.1'", "10809"))
+        linux.write_proxy(before)
+        self.assertEqual(linux.read_proxy()["gnome"], before["gnome"])
+
+    def test_appimage_update(self):
+        from nimbus import updater
+        self.assertEqual(updater.asset_name("0.3.0", "appimage"), "Nimbus-0.3.0-x86_64.AppImage")
+        with tempfile.TemporaryDirectory() as d:
+            new, target = Path(d) / "dl.AppImage", Path(d) / "Nimbus.AppImage"
+            new.write_bytes(b"new")
+            target.write_bytes(b"old")
+            self.assertEqual(updater.replace_appimage(new, target), target)
+            self.assertEqual(target.read_bytes(), b"new")
+            if sys.platform != "win32":
+                self.assertTrue(os.access(target, os.X_OK))
+            self.assertEqual(sorted(p.name for p in Path(d).iterdir()), ["Nimbus.AppImage", "dl.AppImage"])
 
 
 if __name__ == "__main__":

@@ -13,7 +13,8 @@ from typing import Callable
 
 
 from .i18n import tr
-from . import paths, winsys
+from . import paths
+from .platform import current as osys
 from .config_builder import TUN_GATEWAY, Built, free_port  # noqa: F401  (free_port: re-exported)
 
 PROXY_BACKUP = paths.RUN_DIR / "proxy_backup.json"
@@ -49,7 +50,7 @@ def test_config(config: dict) -> None:
     path.write_text(json.dumps(config, ensure_ascii=False), "utf-8")
     r = subprocess.run([str(paths.XRAY_EXE), "run", "-test", "-c", str(path)], capture_output=True,
                        text=True, encoding="utf-8", errors="replace", env=xray_env(),
-                       creationflags=winsys.NO_WINDOW)
+                       **osys.POPEN)
     path.unlink(missing_ok=True)
     if r.returncode != 0:
         lines = [l for l in (r.stdout + r.stderr).splitlines() if l.strip()]
@@ -61,21 +62,21 @@ def restore_proxy_after_crash() -> None:
     if PROXY_BACKUP.exists():
         try:
             saved = json.loads(PROXY_BACKUP.read_text("utf-8"))
-            winsys.write_proxy(winsys.without_dead_local_proxy(saved))
+            osys.write_proxy(osys.without_dead_local_proxy(saved))
         except (OSError, ValueError):
             pass
         PROXY_BACKUP.unlink(missing_ok=True)
     if ENV_BACKUP.exists():
         try:
             saved = json.loads(ENV_BACKUP.read_text("utf-8"))
-            winsys.write_env_proxy(saved)
+            osys.write_env_proxy(saved)
             # Started while our variables were set, we inherited them: subscription downloads
             # would go to a proxy that isn't there.
             for name, value in saved.items():
                 if value is None:
                     os.environ.pop(name, None)
                 else:
-                    os.environ[name] = str(value[0])
+                    os.environ[name] = str(value[0] if isinstance(value, list) else value)
         except (OSError, ValueError):
             pass
         ENV_BACKUP.unlink(missing_ok=True)
@@ -148,7 +149,7 @@ class XrayCore:
             # really has its address: until then traffic still flows outside the tunnel.
             tun_path = paths.RUN_DIR / "tun.json"
             tun_path.write_text(json.dumps(built.tun, ensure_ascii=False, indent=1), "utf-8")
-            self.tun_proc = self._spawn([str(paths.SINGBOX_EXE), "run", "--disable-color", "-c", str(tun_path)],
+            self.tun_proc = self._spawn([str(osys.singbox_path()), "run", "--disable-color", "-c", str(tun_path)],
                                         "sing-box.log", "[tun] ", self.tun_tail)
             deadline = time.time() + 25
             while time.time() < deadline:
@@ -167,19 +168,19 @@ class XrayCore:
         # otherwise keep using whatever proxy is set (e.g. a dead one from another client)
         # instead of the tunnel. Either way the user's settings come back on disconnect.
         if not PROXY_BACKUP.exists():
-            PROXY_BACKUP.write_text(json.dumps(winsys.read_proxy()), "utf-8")
+            PROXY_BACKUP.write_text(json.dumps(osys.read_proxy()), "utf-8")
         self.touched_proxy = True
         self.uses_sysproxy = set_sysproxy
         if set_sysproxy:
-            winsys.enable_proxy(http_port)
+            osys.enable_proxy(http_port)
             if proxy_env:
                 # Programs that never read the Windows proxy (Claude Code, git, curl, npm…)
                 # go by these. Only ones started from now on see them.
                 if not ENV_BACKUP.exists():
-                    ENV_BACKUP.write_text(json.dumps(winsys.read_env_proxy()), "utf-8")
-                winsys.enable_env_proxy(http_port)
+                    ENV_BACKUP.write_text(json.dumps(osys.read_env_proxy()), "utf-8")
+                osys.enable_env_proxy(http_port)
         else:
-            winsys.disable_proxy()
+            osys.disable_proxy()
 
     def _spawn(self, args: list[str], log_name: str, prefix: str, tail: deque, env=None) -> subprocess.Popen:
         log_file = open(paths.LOG_DIR / log_name, "w", encoding="utf-8")
@@ -188,7 +189,7 @@ class XrayCore:
                 proc = subprocess.Popen(
                     args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                     text=True, encoding="utf-8", errors="replace", bufsize=1,
-                    cwd=str(paths.CORE_DIR), env=env, creationflags=winsys.NO_WINDOW)
+                    cwd=str(paths.CORE_DIR), env=env, **osys.POPEN)
                 break
             except PermissionError:
                 # WinError 32: an antivirus still holds the exe after its previous run (a reconnect).

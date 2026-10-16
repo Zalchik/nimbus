@@ -12,7 +12,8 @@ import re
 import subprocess
 
 from .i18n import tr
-from . import config_builder, paths, winsys
+from . import config_builder, paths
+from .platform import current as osys
 from .config_builder import NON_PROXY
 from .settings import Settings
 from .store import Balancer, Server, Store
@@ -195,7 +196,7 @@ def pin(port: int, tag: str) -> None:
     """Make the balancer use this node for new connections (xray api bo)."""
     r = subprocess.run([str(paths.XRAY_EXE), "api", "bo", f"--server=127.0.0.1:{port}", "-b", TAG, tag],
                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
-                       stdin=subprocess.DEVNULL, creationflags=winsys.NO_WINDOW)
+                       stdin=subprocess.DEVNULL, **osys.POPEN)
     if r.returncode != 0:
         raise RuntimeError((r.stdout + r.stderr).strip() or tr("код {returncode}", returncode=r.returncode))
 

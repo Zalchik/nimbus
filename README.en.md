@@ -2,7 +2,7 @@
 
 **English** · [Русский](README.md)
 
-A VPN client for Windows built on [Xray-core](https://github.com/XTLS/Xray-core) and [sing-box](https://github.com/SagerNet/sing-box).
+A VPN client for Windows and Linux built on [Xray-core](https://github.com/XTLS/Xray-core) and [sing-box](https://github.com/SagerNet/sing-box).
 Add a subscription link, pick a server and connect. Nimbus takes care of the rest.
 
 **[Download the latest version →](https://github.com/Zalchik/nimbus/releases/latest)**
@@ -28,6 +28,13 @@ Nimbus checks for new versions at launch and every 6 hours. When one is out, it 
 
 - Unpack it anywhere except `Program Files`. Data is kept in the `data` folder next to `Nimbus.exe`, so the folder can be moved or carried on a USB stick.
 - Updating by hand: unpack the new version over the old one. The `data` folder stays.
+
+**Linux (beta): `Nimbus-<version>-x86_64.AppImage`**
+
+- Make the file executable (`chmod +x Nimbus-*.AppImage`) and run it. FUSE 2 is needed (the `libfuse2` package). Data lives in `~/.config/Nimbus`.
+- TUN mode asks for the administrator password once, the first time: only the sing-box core gets network rights, Nimbus itself runs as a normal user.
+- The system proxy is set in GNOME and KDE; elsewhere the `HTTP_PROXY` / `HTTPS_PROXY` variables work. The tray icon in GNOME needs the AppIndicator extension.
+- It updates itself like the Windows version: the new AppImage replaces the old one.
 
 The data folder holds `settings.json` (settings), `profiles.json` (subscriptions, groups, balancers) and `logs`. Open it from «Settings → App».
 
@@ -155,11 +162,12 @@ python tests/test_core_logic.py
 python build.py
 ```
 
-The result appears in `dist/<version>/`: the `Nimbus` folder, `Nimbus-<version>-portable.zip`, `Nimbus-<version>-setup.exe` and `SHA256SUMS.txt`. Upload all three files to the GitHub release: the built-in updater checks downloads against `SHA256SUMS.txt`. The release tag is `v<version>`, as in `nimbus/paths.py`.
+The result appears in `dist/<version>/`: the `Nimbus` folder, `Nimbus-<version>-portable.zip`, `Nimbus-<version>-setup.exe` and `SHA256SUMS.txt`. Upload these files (and the Linux AppImage) to the GitHub release with one shared `SHA256SUMS.txt`: the built-in updater checks downloads against `SHA256SUMS.txt`. The release tag is `v<version>`, as in `nimbus/paths.py`.
 
 - Before building, put `xray.exe`, `geoip.dat` and `geosite.dat` from the [Xray-core release](https://github.com/XTLS/Xray-core/releases) into `vendor/xray/`, plus `sing-box.exe` (windows-amd64, version 1.15 or newer) from the [sing-box release](https://github.com/SagerNet/sing-box/releases). Wintun is built into sing-box.
 - The installer needs [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`). The script is `installer/nimbus.iss`. Don't change its `AppId`: that's how the installer finds an installed Nimbus.
 - The version is set in `nimbus/paths.py` (`VERSION`).
+- Linux: `python tools/fetch_cores.py linux` and `python build_linux.py` on Linux x86_64 build `Nimbus-<version>-x86_64.AppImage`. GitHub Actions (`.github/workflows/build.yml`) builds both versions on a `v*` tag and keeps them as build artifacts only; it doesn't publish a release.
 
 ## Licenses
 

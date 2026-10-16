@@ -13,16 +13,15 @@ from .lazy import httpx
 
 from . import links, paths
 from .paths import VERSION
+from .platform import current as osys
 from .store import Server, Subscription, new_id
 
 
 def _machine_id() -> str:
-    """Windows' MachineGuid; elsewhere a random id kept in the data folder."""
+    """The system's id (Windows MachineGuid, Linux /etc/machine-id); failing that, a random id
+    kept in the data folder."""
     try:
-        import winreg
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography", 0,
-                            winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
-            return str(winreg.QueryValueEx(k, "MachineGuid")[0])
+        return osys.machine_id()
     except Exception:
         pass
     path = paths.DATA_DIR / "device_id"
@@ -46,7 +45,7 @@ def random_hwid() -> str:
 
 
 def device_name() -> str:
-    return platform.node() or "Windows PC"
+    return platform.node() or f"{osys.OS_NAME} PC"
 
 
 def _header_value(value: str) -> str:
@@ -56,7 +55,7 @@ def _header_value(value: str) -> str:
 
 def hwid_headers(custom: str = "", device: str = "") -> dict[str, str]:
     """Device headers Remnawave and other panels read (the same ones Happ and v2rayN send)."""
-    values = {"x-hwid": custom.strip() or auto_hwid(), "x-device-os": "Windows",
+    values = {"x-hwid": custom.strip() or auto_hwid(), "x-device-os": osys.OS_NAME,
               "x-ver-os": platform.release() or "", "x-device-model": device.strip() or device_name()}
     return {k: _header_value(v) for k, v in values.items()}
 
