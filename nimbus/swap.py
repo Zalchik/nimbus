@@ -117,8 +117,9 @@ def wait_for_exit(pid: int, timeout: float = 60.0) -> bool:
         except PermissionError:
             pass
         try:   # exited but not reaped yet (a zombie) counts as gone
-            if open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()[0] == "Z":
-                return True
+            with open(f"/proc/{pid}/stat") as f:
+                if f.read().rsplit(")", 1)[1].split()[0] == "Z":
+                    return True
         except (OSError, IndexError):
             pass
         time.sleep(0.25)
