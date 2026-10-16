@@ -1,0 +1,18 @@
+build/
+dist/
+vendor/dl/
+vendor/wintun-src/
+__pycache__/
+*.pyc
+release/
+release-*/
+# Core binaries come from the Xray / sing-box releases (see README)
+vendor/xray/*.exe
+vendor/xray/*.dll
+vendor/xray/*.dat
+# Local data of a portable run
+data/
+portable
+*.zip
+nimbus/p.json
+nimbus/xlog.txt

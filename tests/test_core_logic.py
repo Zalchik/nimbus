@@ -1,0 +1,713 @@
+"""Unit tests plus `xray run -test` validation of generated configs.
+
+Run: python -m pytest tests  (or: python tests/test_core_logic.py)
+"""
+import base64
+import ipaddress
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from dataclasses import replace
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from nimbus import balancer, config_builder, links, paths, subscription  # noqa: E402
+from nimbus.settings import Settings  # noqa: E402
+from nimbus.store import Balancer, Server, Store, Subscription  # noqa: E402
+
+UUID = "b831381d-6324-4d53-ad4f-8cda48b30811"
+PBK = "Z84J2IelR9ch3k8VtlVhhs5ycBUlXA7wHBWcBLjF1QA"
+VMESS = "vmess://" + base64.b64encode(json.dumps({
+    "v": "2", "ps": "vm-ws", "add": "vm.example.com", "port": "443", "id": UUID, "aid": "0",
+    "scy": "auto", "net": "ws", "type": "none", "host": "cdn.example.com", "path": "/ws",
+    "tls": "tls", "sni": "cdn.example.com", "fp": "chrome"}).encode()).decode()
+
+LINKS = {
+    "vless-reality": f"vless://{UUID}@1.2.3.4:443?type=tcp&security=reality&sni=www.microsoft.com"
+                     f"&fp=firefox&pbk={PBK}&sid=6ba85179e30d4fc2&flow=xtls-rprx-vision#NL%20Reality",
+    "vless-xhttp": f"vless://{UUID}@x.example.com:443?type=xhttp&security=tls&sni=x.example.com"
+                   f"&path=%2Fxh&mode=packet-up&alpn=h2,http/1.1#xhttp",
+    "vless-grpc": f"vless://{UUID}@g.example.com:443?type=grpc&security=tls&serviceName=svc&mode=multi#grpc",
+    "vmess": VMESS,
+    "trojan": "trojan://p%40ss@t.example.com:443?sni=t.example.com&type=ws&path=%2Ft#trojan",
+    "ss-sip002": "ss://" + base64.urlsafe_b64encode(b"chacha20-ietf-poly1305:secret").decode().rstrip("=")
+                 + "@5.6.7.8:8388#ss",
+    "ss-2022-plain": "ss://2022-blake3-aes-128-gcm:AAAAAAAAAAAAAAAAAAAAAA%3D%3D@5.6.7.8:8388#ss2022",
+    "ss-legacy": "ss://" + base64.b64encode(b"aes-256-gcm:pw@9.9.9.9:443").decode() + "#legacy",
+    "hy2": "hy2://authpass@h.example.com:443?sni=h.example.com&obfs=salamander&obfs-password=ob#hy2",
+    "hy2-hop": "hysteria2://authpass@h.example.com:443?sni=h.example.com&mport=20000-30000#hop",
+    "socks": "socks://" + base64.b64encode(b"user:pw").decode() + "@10.0.0.1:1080#socks",
+    "wireguard": "wireguard://" + "yAnz5TF%2BlXXJte14tji3zlMNq%2BhdP3K9Ug6v7ZMg9Gc%3D"
+                 "@162.159.192.1:2408?publickey=bmXOC%2BF1FxEMF9dyiK2H5%2F1SUtzH0JuVo51h2wPfgyo%3D"
+                 "&address=172.16.0.2%2F32,2606:4700::2%2F128&reserved=1,2,3&mtu=1280#warp",
+}
+
+
+def xray_ok(config: dict) -> str:
+    fd, path = tempfile.mkstemp(suffix=".json")
+    os.write(fd, json.dumps(config).encode())
+    os.close(fd)
+    try:
+        r = subprocess.run([str(paths.XRAY_EXE), "run", "-test", "-c", path], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace",
+                           env={**os.environ, "XRAY_LOCATION_ASSET": str(paths.CORE_DIR)})
+        return "" if r.returncode == 0 else (r.stdout + r.stderr).strip().splitlines()[-1]
+    finally:
+        os.remove(path)
+
+
+def singbox_ok(config: dict) -> str:
+    """"" if sing-box accepts the TUN config; "skip" without sing-box.exe."""
+    if not paths.SINGBOX_EXE.exists():
+        return "skip"
+    fd, path = tempfile.mkstemp(suffix=".json")
+    os.write(fd, json.dumps(config).encode())
+    os.close(fd)
+    try:
+        for attempt in range(40):
+            try:
+                r = subprocess.run([str(paths.SINGBOX_EXE), "check", "--disable-color", "-c", path],
+                                   capture_output=True, text=True, encoding="utf-8", errors="replace")
+                break
+            except PermissionError:   # an antivirus still scanning the exe after its last run
+                if attempt == 39:
+                    raise
+                time.sleep(0.25)
+        return "" if r.returncode == 0 else (r.stdout + r.stderr).strip().splitlines()[-1]
+    finally:
+        os.remove(path)
+
+
+SETTING_VARIANTS = {
+    "default": Settings(),
+    "tun+killswitch": Settings(tunnel_mode="tun", kill_switch=True),
+    "bypass_ru+fakedns+tun": Settings(tunnel_mode="tun", routing_mode="bypass_ru", fake_dns=True),
+    "mux+fragment": Settings(mux=True, fragment=True),
+}
+
+
+class LinkTests(unittest.TestCase):
+    def test_all_links_parse_and_validate(self):
+        for label, link in LINKS.items():
+            for vname, s in SETTING_VARIANTS.items():
+                with self.subTest(link=label, settings=vname):
+                    server = Server(id="x", name=label, link=link)
+                    built = config_builder.build(server, s, 12345, egress="Ethernet")
+                    self.assertEqual(xray_ok(built.config), "")
+
+    def test_reality_fields(self):
+        name, ob = links.parse_link(LINKS["vless-reality"])
+        self.assertEqual(name, "NL Reality")
+        st = ob["streamSettings"]
+        self.assertEqual(st["security"], "reality")
+        self.assertEqual(st["realitySettings"]["publicKey"], PBK)
+        self.assertEqual(ob["settings"]["flow"], "xtls-rprx-vision")
+
+    def test_mux_skipped_with_vision(self):
+        built = config_builder.build(Server(id="x", name="r", link=LINKS["vless-reality"]),
+                                     Settings(mux=True), 1)
+        self.assertNotIn("mux", built.config["outbounds"][0])
+
+    def test_ss_variants(self):
+        for key in ("ss-sip002", "ss-2022-plain", "ss-legacy"):
+            _, ob = links.parse_link(LINKS[key])
+            self.assertTrue(ob["settings"]["method"] and ob["settings"]["password"], key)
+
+    def test_subscription_body_formats(self):
+        plain = "\n".join(LINKS.values())
+        self.assertEqual(len(subscription.parse_body(plain)[0]), len(LINKS))
+        b64 = base64.b64encode(plain.encode()).decode()
+        self.assertEqual(len(subscription.parse_body(b64)[0]), len(LINKS))
+        cfgs = json.dumps([{"remarks": "A", "outbounds": [{"protocol": "freedom"}]},
+                           {"remarks": "B", "outbounds": [{"protocol": "freedom"}]}])
+        servers, _ = subscription.parse_body(cfgs)
+        self.assertEqual([s.name for s in servers], ["A", "B"])
+        self.assertTrue(all(s.is_full_config for s in servers))
+
+
+class FullConfigTests(unittest.TestCase):
+    PROVIDER = {
+        "remarks": "Balancer",
+        "routing": {"domainStrategy": "IPIfNonMatch",
+                    "balancers": [{"tag": "bal", "selector": ["proxy"],
+                                   "strategy": {"type": "leastLoad"}}],
+                    "rules": [{"domain": ["domain:example.ru"], "outboundTag": "direct"},
+                              {"network": "tcp,udp", "balancerTag": "bal"}]},
+        "burstObservatory": {"subjectSelector": ["proxy"],
+                             "pingConfig": {"destination": "http://www.gstatic.com/generate_204",
+                                            "interval": "1m"}},
+        "outbounds": [
+            {"tag": "proxy", **{k: v for k, v in links.parse_link(LINKS["vless-reality"])[1].items()
+                                if k != "tag"}},
+            {"tag": "proxy-2", **{k: v for k, v in links.parse_link(LINKS["vless-xhttp"])[1].items()
+                                  if k != "tag"}},
+            {"tag": "direct", "protocol": "freedom"},
+            {"tag": "block", "protocol": "blackhole"},
+        ],
+        "inbounds": [{"tag": "socks", "protocol": "socks", "port": 10808}],
+    }
+
+    def test_provider_config_kept(self):
+        server = Server(id="x", name="b", config=self.PROVIDER)
+        for vname, s in SETTING_VARIANTS.items():
+            with self.subTest(settings=vname):
+                built = config_builder.build(server, s, 1)
+                cfg = built.config
+                self.assertEqual(xray_ok(cfg), "")
+                self.assertEqual(cfg["routing"]["balancers"], self.PROVIDER["routing"]["balancers"])
+                self.assertIn("burstObservatory", cfg)
+                self.assertEqual(built.proxy_tags, ["proxy", "proxy-2"])
+                self.assertEqual("tun" in [i["tag"] for i in cfg["inbounds"]], s.tunnel_mode == "tun")
+
+    def test_global_mode_keeps_balancer(self):
+        """Provider routing off: provider's RU-direct rules go, the balancer stays."""
+        server = Server(id="x", name="b", config=self.PROVIDER)
+        cfg = config_builder.build(server, Settings(use_provider_routing=False), 1).config
+        rules = cfg["routing"]["rules"]
+        self.assertEqual(rules[-1].get("balancerTag"), "bal")
+        self.assertFalse(any("domain:example.ru" in r.get("domain", []) for r in rules))
+        self.assertEqual(xray_ok(cfg), "")
+
+    def test_default_runs_provider_config_as_is(self):
+        """Default = what the original launcher script did: only inbounds (and stats) change."""
+        server = Server(id="x", name="b", config=self.PROVIDER)
+        cfg = config_builder.build(server, Settings(), 1).config
+        self.assertEqual(cfg["routing"], self.PROVIDER["routing"])
+        self.assertEqual(cfg["outbounds"], self.PROVIDER["outbounds"])
+        self.assertEqual(cfg["burstObservatory"], self.PROVIDER["burstObservatory"])
+        self.assertNotIn("dns", cfg)
+
+    def test_settings_migration_restores_provider_routing(self):
+        import tempfile
+        from pathlib import Path
+        from nimbus import settings as settings_mod
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "settings.json"
+            f.write_text(json.dumps({"use_provider_routing": False, "http_port": 1234,
+                                     "settings_version": 2}), "utf-8")
+            old, settings_mod.SETTINGS_FILE = settings_mod.SETTINGS_FILE, f
+            try:
+                s = Settings.load()
+                self.assertTrue(s.use_provider_routing)
+                self.assertEqual(s.http_port, 1234)
+                s.use_provider_routing = False
+                s.save()
+                self.assertFalse(Settings.load().use_provider_routing)  # a later choice sticks
+            finally:
+                settings_mod.SETTINGS_FILE = old
+
+    def test_settings_migration_turns_fakedns_on(self):
+        import tempfile
+        from pathlib import Path
+        from nimbus import settings as settings_mod
+        self.assertTrue(Settings().fake_dns)
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "settings.json"
+            f.write_text(json.dumps({"fake_dns": False, "settings_version": 3}), "utf-8")
+            old, settings_mod.SETTINGS_FILE = settings_mod.SETTINGS_FILE, f
+            try:
+                s = Settings.load()
+                self.assertTrue(s.fake_dns)
+                s.fake_dns = False
+                s.save()
+                self.assertFalse(Settings.load().fake_dns)  # turning it off later sticks
+            finally:
+                settings_mod.SETTINGS_FILE = old
+
+
+class ExitIpTests(unittest.TestCase):
+    def _lookup(self, handler):
+        import httpx
+        from nimbus import exit_ip
+        real, old_country = httpx.Client, exit_ip.country
+
+        def client(**kw):
+            kw.pop("proxy", None)
+            return real(transport=httpx.MockTransport(handler), **kw)
+        exit_ip.httpx.Client, exit_ip.country = client, lambda ip: None
+        try:
+            return exit_ip.lookup(None, attempts=1)
+        finally:
+            exit_ip.httpx.Client, exit_ip.country = real, old_country
+
+    def test_own_endpoint_wins(self):
+        """The VPN server sends Cloudflare's traffic out another address (78.17.84.98) than
+        what sites see (31.207.5.18): ours must be the answer whenever it gives one."""
+        import httpx
+
+        def handler(request):
+            if request.url.host == "zalchikmods.site":
+                return httpx.Response(200, json={"ip": "2.27.202.125", "country": "DE"})
+            return httpx.Response(200, text="ip=78.17.84.98\nloc=FI\n")
+        # The server's fresh database names the country (geoip.dat said US for this one).
+        self.assertEqual(self._lookup(handler), ("2.27.202.125", "DE"))
+
+    def test_country_of_fallback_ip_from_own_database(self):
+        import httpx
+
+        def handler(request):
+            if request.url.host == "zalchikmods.site":
+                if request.url.params.get("ip") == "2.26.81.49":
+                    return httpx.Response(200, json={"ip": "2.26.81.49", "country": "DE"})
+                return httpx.Response(502)
+            if request.url.host == "1.1.1.1":
+                return httpx.Response(200, text="ip=2.26.81.49\nloc=XX\n")
+            return httpx.Response(429)
+        self.assertEqual(self._lookup(handler), ("2.26.81.49", "DE"))
+
+    def test_fallback_when_own_endpoint_fails(self):
+        import httpx
+
+        def handler(request):
+            if request.url.host == "1.1.1.1":
+                return httpx.Response(200, text="fl=1\nip=2.26.81.49\nloc=DE\n")
+            return httpx.Response(429)  # rate-limited, as free APIs do with a shared VPN exit
+        self.assertEqual(self._lookup(handler), ("2.26.81.49", "DE"))
+
+    def test_country_from_geoip_dat(self):
+        from nimbus import exit_ip
+
+        def field(num, payload):
+            def varint(n):
+                out = b""
+                while n >= 0x80:
+                    out += bytes([n & 0x7F | 0x80])
+                    n >>= 7
+                return out + bytes([n])
+            return varint(num << 3 | 2) + varint(len(payload)) + payload
+
+        def cidr(net, prefix):
+            return field(2, field(1, ipaddress.ip_address(net).packed) + bytes([2 << 3, prefix]))
+        data = (field(1, field(1, b"PRIVATE") + cidr("2.0.0.0", 8))
+                + field(1, field(1, b"DE") + cidr("2.26.0.0", 16))
+                + field(1, field(1, b"RU") + cidr("77.88.0.0", 18) + cidr("2a02:6b8::", 32)))
+        cases = {"2.26.81.49": "DE", "77.88.8.8": "RU", "2a02:6b8::feed": "RU", "8.8.8.8": None,
+                 "2.27.0.1": None}
+        old = exit_ip._index
+        try:
+            exit_ip._index = exit_ip.build_index(data)
+            for ip, want in cases.items():
+                self.assertEqual(exit_ip.country_in(data, ip), want, ip)
+                self.assertEqual(exit_ip.country(ip), want, ip)
+        finally:
+            exit_ip._index = old
+
+
+class TunAndInstanceTests(unittest.TestCase):
+    def test_tun_without_ipv6_is_ipv4_only(self):
+        """With IPv6 off in Windows the adapter can't get an IPv6 address."""
+        from nimbus import winsys
+        old = winsys.ipv6_enabled
+        server = Server(id="x", name="r", link=LINKS["vless-reality"])
+        try:
+            for v6 in (False, True):
+                winsys.ipv6_enabled = lambda v=v6: v
+                tun = config_builder.build(server, Settings(tunnel_mode="tun"), 1).tun["inbounds"][0]
+                self.assertEqual(any(":" in a for a in tun["address"]), v6)
+                self.assertEqual(any(":" in a for a in tun["route_exclude_address"]), v6)
+                self.assertEqual(tun["address"][0], config_builder.TUN_GATEWAY + "/24")
+        finally:
+            winsys.ipv6_enabled = old
+
+    def test_tun_is_singbox_in_front_of_xray(self):
+        """Throne's layout: sing-box TUN with its own stack, everything to Xray over SOCKS,
+        Xray's sockets bound to the physical adapter."""
+        server = Server(id="x", name="x", link=LINKS["vless-xhttp"])
+        built = config_builder.build(server, Settings(tunnel_mode="tun"), 1, egress="Ethernet")
+        cfg, tun = built.config, built.tun
+        self.assertFalse(any(i["protocol"] == "tun" for i in cfg["inbounds"]))
+        bridge = next(i for i in cfg["inbounds"] if i["tag"] == "tun")
+        self.assertEqual((bridge["protocol"], bridge["listen"]), ("socks", "127.0.0.1"))
+        self.assertTrue(bridge["sniffing"]["enabled"])
+        out = next(o for o in tun["outbounds"] if o["tag"] == "xray")
+        self.assertEqual(out["server_port"], bridge["port"])
+        self.assertEqual(out["username"], bridge["settings"]["accounts"][0]["user"])
+        inbound = tun["inbounds"][0]
+        self.assertNotIn("stack", inbound)   # sing-tun's own stack, as in Throne
+        self.assertTrue(inbound["auto_route"])
+        self.assertFalse(inbound["strict_route"])
+        self.assertEqual(tun["route"]["final"], "xray")
+        self.assertEqual(tun["route"]["rules"][0]["process_name"], ["xray.exe"])
+        self.assertIn({"protocol": "dns", "action": "hijack-dns"}, tun["route"]["rules"])
+        for ob in cfg["outbounds"]:
+            want = None if ob["protocol"] == "blackhole" else "Ethernet"
+            self.assertEqual(ob.get("streamSettings", {}).get("sockopt", {}).get("interface"), want, ob["tag"])
+        self.assertEqual(tun["dns"]["rules"][0], {"domain": ["x.example.com"], "action": "route",
+                                                  "server": "dns-direct"})
+        remote = tun["dns"]["servers"][0]
+        self.assertEqual((remote["type"], remote["server"], remote["detour"]), ("https", "1.1.1.1", "xray"))
+        self.assertEqual(xray_ok(cfg), "")
+        self.assertIn(singbox_ok(tun), ("", "skip"))
+        self.assertIsNone(config_builder.build(server, Settings(), 1).tun)
+
+    def test_kill_switch_sends_xray_direct_dns_through_tunnel(self):
+        """strict_route blocks port 53 outside the tunnel for every process but sing-box."""
+        server = Server(id="x", name="x", link=LINKS["vless-reality"])
+        s = Settings(tunnel_mode="tun", kill_switch=True, routing_mode="bypass_ru")
+        built = config_builder.build(server, s, 1, egress="Wi-Fi")
+        rule = next(r for r in built.config["routing"]["rules"] if r.get("inboundTag") == ["dns-internal"])
+        self.assertEqual(rule["outboundTag"], config_builder.TUN_DNS_OUT)
+        dns_out = next(o for o in built.config["outbounds"] if o["tag"] == config_builder.TUN_DNS_OUT)
+        self.assertNotIn("streamSettings", dns_out)
+        self.assertTrue(built.tun["inbounds"][0]["strict_route"])
+        self.assertEqual(xray_ok(built.config), "")
+        self.assertIn(singbox_ok(built.tun), ("", "skip"))
+
+    def test_preset_apps_routed_by_singbox(self):
+        """Behind the bridge Xray only sees sing-box, so app rules live in sing-box."""
+        apps = PresetTests.PRESET["apps"]
+        server = Server(id="x", name="x", link=LINKS["vless-reality"])
+        for mode, out in (("bypass", "direct"), ("vpn", "xray-app")):
+            with self.subTest(mode=mode):
+                s = Settings(tunnel_mode="tun", route_preset="p",
+                             route_presets=[{"id": "p", "name": "p", "mode": mode, "apps": apps, "sites": []}])
+                built = config_builder.build(server, s, 1)
+                rule = built.tun["route"]["rules"][1]
+                self.assertEqual(rule["outbound"], out)
+                self.assertEqual(rule["process_name"], ["steam.exe", "cs2.exe"])
+                self.assertEqual(rule["process_path_regex"], [r"(?i)^D:\\Games\\CS\\"])
+                app_in = [i for i in built.config["inbounds"] if i["tag"] == "tun-app"]
+                self.assertEqual(bool(app_in), mode == "vpn")
+                if mode == "vpn":
+                    rules = built.config["routing"]["rules"]
+                    self.assertLess(rules.index({"inboundTag": ["tun-app"], "outboundTag": "proxy"}),
+                                    rules.index({"network": "tcp,udp", "outboundTag": "direct"}))
+                    port = next(o for o in built.tun["outbounds"] if o["tag"] == "xray-app")["server_port"]
+                    self.assertEqual(port, app_in[0]["port"])
+                self.assertEqual(xray_ok(built.config), "")
+                self.assertIn(singbox_ok(built.tun), ("", "skip"))
+
+    def test_dns_address_formats(self):
+        f = config_builder._sb_dns
+        self.assertEqual(f("8.8.8.8", True), {"type": "https", "server": "8.8.8.8", "path": "/dns-query"})
+        self.assertEqual(f("77.88.8.8", True), {"type": "tcp", "server": "77.88.8.8"})
+        self.assertEqual(f("8.8.8.8", False), {"type": "udp", "server": "8.8.8.8"})
+        self.assertEqual(f("tcp://1.2.3.4:5353", False), {"type": "tcp", "server": "1.2.3.4", "server_port": 5353})
+        self.assertEqual(f("quic+local://dns.adguard.com", False),
+                         {"type": "quic", "server": "dns.adguard.com", "domain_resolver": "dns-local"})
+        self.assertEqual(f("localhost", False), {"type": "local"})
+
+    def test_default_egress_found(self):
+        from nimbus import winsys
+        found = winsys.default_egress(config_builder.TUN_NAME)
+        if found is None:
+            self.skipTest("no default route on this machine")
+        self.assertTrue(found[0])
+
+    def test_all_tun_configs_validate_in_singbox(self):
+        if not paths.SINGBOX_EXE.exists():
+            self.skipTest("sing-box.exe not in vendor/xray")
+        servers = [Server(id=k, name=k, link=v) for k, v in LINKS.items()]
+        servers.append(Server(id="p", name="p", config=FullConfigTests.PROVIDER))
+        for srv in servers:
+            for vname, s in SETTING_VARIANTS.items():
+                if s.tunnel_mode != "tun":
+                    continue
+                with self.subTest(server=srv.id, settings=vname):
+                    self.assertEqual(singbox_ok(config_builder.build(srv, s, 1, egress="Ethernet").tun), "")
+
+    def test_single_instance_mutex(self):
+        import ctypes
+        from nimbus import winsys
+        name = f"nimbus-test-{id(self)}"
+        first = winsys.single_instance_mutex(name)
+        self.assertTrue(first)
+        self.assertIsNone(winsys.single_instance_mutex(name))
+        ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(first))
+        again = winsys.single_instance_mutex(name)
+        self.assertTrue(again)
+        ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(again))
+
+
+class GroupAndRoutingTests(unittest.TestCase):
+    def test_provider_routing_detection(self):
+        ru = Server(id="a", name="a", config={
+            "outbounds": [{"tag": "proxy", "protocol": "vless"}, {"tag": "direct", "protocol": "freedom"}],
+            "routing": {"rules": [{"ip": ["geoip:private"], "outboundTag": "direct"},
+                                  {"domain": ["geosite:category-ru"], "outboundTag": "direct"}]}})
+        local_only = Server(id="b", name="b", config={
+            "outbounds": [{"tag": "proxy", "protocol": "vless"}, {"tag": "direct", "protocol": "freedom"}],
+            "routing": {"rules": [{"ip": ["geoip:private", "192.168.0.0/16"], "outboundTag": "direct"}]}})
+        link = Server(id="c", name="c", link=LINKS["vless-reality"])
+        self.assertEqual(config_builder.provider_routing(ru), {"ru": True})
+        self.assertIsNone(config_builder.provider_routing(local_only))
+        self.assertIsNone(config_builder.provider_routing(link))
+
+    def test_groups_store_roundtrip(self):
+        import tempfile
+        from pathlib import Path
+        from nimbus import store as store_mod
+        with tempfile.TemporaryDirectory() as d:
+            old, store_mod.PROFILES_FILE = store_mod.PROFILES_FILE, Path(d) / "profiles.json"
+            try:
+                st = store_mod.Store(groups=[store_mod.Group(id="g1", name="Работа")],
+                                     servers=[Server(id="s1", name="x", sub_id="g1", link=LINKS["vless-reality"]),
+                                              Server(id="s2", name="y", link=LINKS["vless-reality"])])
+                st.save()
+                st = store_mod.Store.load()
+                self.assertEqual(st.group("g1").name, "Работа")
+                self.assertEqual([s.id for s in st.servers_of("g1")], ["s1"])
+                st.remove_group("g1")
+                self.assertEqual([s.id for s in st.servers], ["s2"])
+            finally:
+                store_mod.PROFILES_FILE = old
+
+
+class FlagTests(unittest.TestCase):
+    def test_flag_split_and_sort_key(self):
+        from nimbus.ui import flags
+        self.assertEqual(flags.split("🇪🇺 ⚡️ Быстрый | АВТО"), ("EU", "⚡️ Быстрый | АВТО"))
+        self.assertEqual(flags.split(" 🇳🇱 Нидерланды | 5 гб/c")[0], "NL")
+        self.assertEqual(flags.split("Обход LTE | Нидерланды • 🟢")[0], "NL")
+        self.assertIsNone(flags.split("YouTube без рекламы")[0])
+        names = ["🇪🇺 ⚡️ Быстрый", "🇦🇲 Армения", "⭐ Болгария", "  🇩🇪 Германия"]
+        self.assertEqual(sorted(names, key=flags.sort_key),
+                         ["🇦🇲 Армения", "⭐ Болгария", "🇪🇺 ⚡️ Быстрый", "  🇩🇪 Германия"])
+
+
+class ShareTests(unittest.TestCase):
+    def test_links_roundtrip_through_outbounds(self):
+        from nimbus import share
+        for label, link in LINKS.items():
+            with self.subTest(link=label):
+                name, ob = links.parse_link(link)
+                again = share.outbound_link(ob, name)
+                self.assertIsNotNone(again)
+                name2, ob2 = links.parse_link(again)
+                self.assertEqual(name2, name)
+                self.assertEqual(ob2["settings"], ob["settings"])
+                self.assertEqual(ob2.get("streamSettings"), ob.get("streamSettings"))
+
+    def test_provider_config_shares_main_node(self):
+        from nimbus import share
+        srv = Server(id="p", name="🇳🇱 Авто", config=FullConfigTests.PROVIDER)
+        link = share.server_link(srv)
+        self.assertTrue(link.startswith("vless://") and link.endswith("#%F0%9F%87%B3%F0%9F%87%B1%20%D0%90%D0%B2%D1%82%D0%BE"))
+        self.assertEqual(links.parse_link(link)[1]["settings"]["address"], "1.2.3.4")
+        self.assertEqual(share.node_count(srv), 2)
+        self.assertEqual(share.server_json(srv, Settings())["routing"]["balancers"][0]["tag"], "bal")
+        link_srv = Server(id="l", name="mine", link=LINKS["trojan"])
+        cfg = share.server_json(link_srv, Settings(tunnel_mode="tun"))
+        self.assertEqual(cfg["remarks"], "mine")
+        self.assertNotIn("metrics", cfg)
+        self.assertFalse(any(i["protocol"] == "tun" for i in cfg["inbounds"]))
+        self.assertEqual(xray_ok(cfg), "")
+        text, skipped = share.export_links([srv, link_srv])
+        self.assertEqual((len(text.splitlines()), skipped), (2, 0))
+        many = share.export_json([srv, link_srv], Settings())
+        self.assertEqual([c["remarks"] for c in many], ["Balancer", "mine"])  # provider name kept
+        self.assertEqual(share.export_json([link_srv], Settings())["remarks"], "mine")
+
+    def test_qr_codes_decode(self):
+        from nimbus import qr
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            self.skipTest("OpenCV not installed")
+        for text in (LINKS["vless-reality"], "https://sub.example.com/abc", "x" * 900):
+            code = qr.encode(text)
+            n = code.size + 8
+            img = np.full((n, n), 255, np.uint8)
+            for y, row in enumerate(code.modules):
+                for x, dark in enumerate(row):
+                    if dark:
+                        img[y + 4, x + 4] = 0
+            decoded = ""
+            for scale in (4, 6, 8):
+                big = cv2.resize(img, (n * scale, n * scale), interpolation=cv2.INTER_NEAREST)
+                for det in (cv2.QRCodeDetector(), cv2.QRCodeDetectorAruco()):
+                    decoded = decoded or det.detectAndDecode(big)[0]
+            self.assertEqual(decoded, text)
+
+
+class PresetTests(unittest.TestCase):
+    PRESET = {"id": "p1", "name": "Игры", "mode": "bypass", "provider": True,
+              "apps": [{"name": "Steam", "path": r"C:\Program Files (x86)\Steam\steam.exe", "kind": "exe"},
+                       {"name": "CS2", "path": r"D:\Games\CS", "kind": "dir", "exes": ["cs2.exe"]}],
+              "sites": ["store.steampowered.com", "https://www.twitch.tv/x", "*.valve.net", "1.2.3.0/24",
+                        "geoip:ru", "geosite:youtube", "не сайт"]}
+
+    def test_site_entries(self):
+        e = config_builder.site_entry
+        self.assertEqual(e("https://www.twitch.tv/x"), ("domain", "domain:www.twitch.tv"))
+        self.assertEqual(e("*.Valve.net"), ("domain", "domain:valve.net"))
+        self.assertEqual(e("1.2.3.0/24"), ("ip", "1.2.3.0/24"))
+        self.assertEqual(e("GeoIP:RU"), ("ip", "geoip:ru"))
+        self.assertEqual(e("geosite:youtube"), ("domain", "geosite:youtube"))
+        self.assertIsNone(e("не сайт"))
+
+    def test_app_matchers_cover_case(self):
+        values = config_builder.app_matchers(self.PRESET["apps"])
+        self.assertEqual(values, ["steam.exe", "D:/Games/CS/", "d:/games/cs/", "cs2.exe"])
+
+    def test_presets_build_and_validate(self):
+        s = Settings(route_presets=[self.PRESET, {**self.PRESET, "id": "p2", "mode": "vpn"}])
+        provider = Server(id="p", name="p", config=FullConfigTests.PROVIDER)
+        link = Server(id="l", name="l", link=LINKS["vless-reality"])
+        for pid in ("p1", "p2"):
+            for srv in (provider, link):
+                for mode in ("proxy", "tun"):
+                    with self.subTest(preset=pid, server=srv.id, mode=mode):
+                        cfg = config_builder.build(srv, replace(s, route_preset=pid, tunnel_mode=mode), 1).config
+                        self.assertEqual(xray_ok(cfg), "")
+                        rules = cfg["routing"]["rules"]
+                        proc = next(r for r in rules if "process" in r)
+                        if pid == "p1":
+                            self.assertEqual(proc["outboundTag"], "direct")
+                        else:
+                            self.assertNotEqual(proc.get("outboundTag"), "direct")
+                            self.assertEqual(rules[-1], {"network": "tcp,udp", "outboundTag": "direct"})
+                        self.assertEqual(cfg["routing"]["domainStrategy"], "IPIfNonMatch")
+        # bypass on top of the provider's rules keeps them
+        cfg = config_builder.build(provider, replace(s, route_preset="p1"), 1).config
+        self.assertIn({"domain": ["domain:example.ru"], "outboundTag": "direct"}, cfg["routing"]["rules"])
+
+    def test_lnk_parsing(self):
+        from nimbus import apps
+        roots = apps._shortcut_dirs()
+        import glob
+        lnks = [p for r in roots for p in glob.glob(os.path.join(r, "**", "*.lnk"), recursive=True)][:50]
+        if not lnks:
+            self.skipTest("no shortcuts on this machine")
+        targets = [apps.lnk_target(p) for p in lnks]
+        self.assertTrue(any(t and t[0].lower().endswith(".exe") for t in targets))
+
+
+class ProxyEnvTests(unittest.TestCase):
+    def test_env_proxy_set_and_restored(self):
+        """Claude Code and other console programs ignore the Windows proxy and read HTTPS_PROXY;
+        whatever the user had comes back on disconnect, after a crash too."""
+        from pathlib import Path
+        from nimbus import core, winsys
+        reg = {"HTTP_PROXY": None, "HTTPS_PROXY": ["http://corp:3128", 1], "NO_PROXY": None}
+        saved = (winsys.read_env_proxy, winsys.write_env_proxy, core.ENV_BACKUP, dict(os.environ))
+        with tempfile.TemporaryDirectory() as d:
+            winsys.read_env_proxy = lambda: dict(reg)
+            winsys.write_env_proxy = lambda values: reg.update(values)
+            core.ENV_BACKUP = Path(d) / "env_backup.json"
+            try:
+                core.ENV_BACKUP.write_text(json.dumps(winsys.read_env_proxy()), "utf-8")
+                winsys.enable_env_proxy(10809)
+                self.assertEqual(reg["HTTPS_PROXY"][0], "http://127.0.0.1:10809")
+                self.assertIn("127.0.0.1", reg["NO_PROXY"][0])
+                os.environ["HTTP_PROXY"] = "http://127.0.0.1:10809"   # inherited by a fresh start
+                core.restore_proxy_after_crash()
+                self.assertEqual(reg, {"HTTP_PROXY": None, "HTTPS_PROXY": ["http://corp:3128", 1], "NO_PROXY": None})
+                self.assertNotIn("HTTP_PROXY", os.environ)
+                self.assertFalse(core.ENV_BACKUP.exists())
+            finally:
+                winsys.read_env_proxy, winsys.write_env_proxy, core.ENV_BACKUP, env = saved
+                os.environ.clear()
+                os.environ.update(env)
+
+
+class ProxyRestoreTests(unittest.TestCase):
+    def test_dead_local_proxy_is_not_restored(self):
+        import socket
+        import winreg
+        from nimbus import winsys
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            dead = s.getsockname()[1]  # closed after the block: nothing listens there
+        saved = {"ProxyEnable": [1, winreg.REG_DWORD], "ProxyServer": [f"127.0.0.1:{dead}", 1],
+                 "ProxyOverride": None}
+        self.assertEqual(winsys.without_dead_local_proxy(saved)["ProxyEnable"][0], 0)
+        with socket.socket() as live:
+            live.bind(("127.0.0.1", 0))
+            live.listen()
+            saved["ProxyServer"] = [f"127.0.0.1:{live.getsockname()[1]}", 1]
+            self.assertEqual(winsys.without_dead_local_proxy(saved)["ProxyEnable"][0], 1)
+        corporate = {**saved, "ProxyServer": ["proxy.corp.local:3128", 1]}
+        self.assertEqual(winsys.without_dead_local_proxy(corporate)["ProxyEnable"][0], 1)
+
+
+class BalancerTests(unittest.TestCase):
+    def _store(self) -> Store:
+        st = Store(subscriptions=[Subscription(id="sub", url="https://panel.example.com/sub")])
+        st.servers = [Server(id=f"l{i}", name=k, link=v) for i, (k, v) in enumerate(LINKS.items())]
+        st.servers += [Server(id="p1", name="prov 1", sub_id="sub", config=FullConfigTests.PROVIDER),
+                       Server(id="p2", name="prov 2", sub_id="sub", config=FullConfigTests.PROVIDER)]
+        return st
+
+    def test_mixed_servers_validate_without_provider_rules(self):
+        st = self._store()
+        bal = Balancer(id="b", name="Все", server_ids=[s.id for s in st.servers])
+        for vname, s in SETTING_VARIANTS.items():
+            with self.subTest(settings=vname):
+                srv = balancer.as_server(bal, st, s)
+                self.assertIsNone(config_builder.provider_routing(srv))
+                built = config_builder.build(srv, s, 1, egress="Ethernet")
+                self.assertEqual(xray_ok(built.config), "")
+                routing = built.config["routing"]
+                self.assertEqual(routing["balancers"][0]["tag"], balancer.TAG)
+                self.assertEqual(routing["rules"][-1].get("balancerTag"), balancer.TAG)
+
+    def test_one_subscription_keeps_provider_rules(self):
+        st = self._store()
+        srv = balancer.as_server(Balancer(id="b", name="Провайдер", sub_ids=["sub"]), st, Settings())
+        self.assertIsNotNone(config_builder.provider_routing(srv))
+        rules = srv.config["routing"]["rules"]
+        self.assertIn({"domain": ["domain:example.ru"], "outboundTag": "direct"}, rules)
+        self.assertEqual(xray_ok(config_builder.build(srv, Settings(), 1).config), "")
+
+    def test_nodes_and_helpers_tagged_apart(self):
+        st = self._store()
+        cfg = balancer.as_server(Balancer(id="b", name="x", server_ids=["l0", "p1"]), st,
+                                 Settings(fragment=True)).config
+        tags = [o["tag"] for o in cfg["outbounds"]]
+        self.assertEqual(len(tags), len(set(tags)))
+        nodes = [t for t in tags if t.startswith(balancer.PREFIX)]
+        self.assertEqual(nodes, ["nimbus-auto-0-proxy", "nimbus-auto-1-proxy", "nimbus-auto-1-proxy-2"])
+        self.assertIn(balancer.FRAGMENT, tags)
+
+    def test_whole_subscription_takes_new_servers(self):
+        st = self._store()
+        bal = Balancer(id="b", name="x", sub_ids=["sub"], server_ids=["l0"])
+        self.assertEqual([m.id for m in st.members(bal)], ["l0", "p1", "p2"])
+        st.servers.append(Server(id="p3", name="prov 3", sub_id="sub", config=FullConfigTests.PROVIDER))
+        self.assertIn("p3", [m.id for m in st.members(bal)])
+
+    def test_current_node(self):
+        members = [Server(id="a", name="A"), Server(id="b", name="B")]
+        obs = {"nimbus-auto-0-proxy": {"alive": True, "delay": 120},
+               "nimbus-auto-1-proxy": {"alive": True, "delay": 40},
+               "nimbus-auto-1-proxy-2": {"health_ping": {"all": 2, "fail": 2}}}
+        self.assertEqual(balancer.current_node(obs, members).name, "B")
+        self.assertIsNone(balancer.current_node({"nimbus-auto-0-proxy": {}}, members))
+
+    def test_stable_mode_keeps_node_unless_much_faster(self):
+        def obs(**delays):
+            return {f"nimbus-auto-{k[1:]}-proxy": ({"alive": True, "delay": v} if v else {})
+                    for k, v in delays.items()}
+        cur = "nimbus-auto-0-proxy"
+        # 40 ms (20%) faster: jitter, not worth a new IP
+        self.assertEqual(balancer.pick_stable(obs(n0=200, n1=160), cur), cur)
+        # 30% but only 30 ms: still stays
+        self.assertEqual(balancer.pick_stable(obs(n0=100, n1=70), cur), cur)
+        # 150 ms and 50% faster: moves
+        self.assertEqual(balancer.pick_stable(obs(n0=300, n1=150), cur), "nimbus-auto-1-proxy")
+        # current one stopped answering: moves to the fastest alive
+        self.assertEqual(balancer.pick_stable(obs(n0=0, n1=400, n2=250), cur), "nimbus-auto-2-proxy")
+        # nothing answers: stays put; nothing chosen yet: the fastest
+        self.assertEqual(balancer.pick_stable(obs(n0=0, n1=0), cur), cur)
+        self.assertEqual(balancer.pick_stable(obs(n0=90, n1=80), None), "nimbus-auto-1-proxy")
+
+    def test_api_config_validates(self):
+        st = self._store()
+        s = Settings()
+        built = config_builder.build(balancer.as_server(Balancer(id="b", name="x", sub_ids=["sub"]), st, s), s, 1)
+        balancer.enable_api(built.config, 12399)
+        self.assertEqual(xray_ok(built.config), "")
+
+    def test_plain_names(self):
+        self.assertEqual(balancer.plain("\U0001F1F3\U0001F1F1 Нидерланды"), "Нидерланды")
+        self.assertEqual(balancer.plain("Без флага"), "Без флага")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
