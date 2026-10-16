@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton, QSpinBox, QStyledItemDelegate, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import balancer, links, paths, subscription
+from .. import balancer, deeplink, links, paths, subscription
 from ..store import Balancer, Server
 from . import flags, icons, theme
 from .widgets import IconButton
@@ -72,6 +72,12 @@ def ask(parent, title: str, text: str, ok: str = "Да", cancel: str = "Отме
     d = Dialog(parent, title, title, text, 460)
     d.buttons(ok, cancel)
     return bool(d.exec())
+
+
+def inform(parent, title: str, text: str, ok: str = "Понятно") -> None:
+    d = Dialog(parent, title, title, text, 480)
+    d.buttons(ok, None)
+    d.exec()
 
 
 def get_text(parent, title: str, label: str, text: str = "") -> tuple[str, bool]:
@@ -168,15 +174,15 @@ class LogDialog(Dialog):
 class AddDialog(Dialog):
     """Subscription URL. Picks up the clipboard if it holds one."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, url: str = ""):
         super().__init__(parent, "Подписка", "Добавить подписку",
                          "Ссылка на подписку от VPN-провайдера (https://…). Серверы, трафик и срок подписки "
                          "подтянутся сами и будут обновляться автоматически.", 560)
         self.edit = QLineEdit(placeholderText="https://…")
         self.edit.setFont(theme.font(9, mono=True))
         self.edit.setMinimumHeight(40)
-        clip = QGuiApplication.clipboard().text().strip()
-        if clip.lower().startswith(("http://", "https://")) and "\n" not in clip:
+        clip = url or QGuiApplication.clipboard().text().strip()
+        if (clip.lower().startswith(("http://", "https://")) or deeplink.is_deep_link(clip)) and "\n" not in clip:
             self.edit.setText(clip)
             self.edit.selectAll()
         self.lay.addSpacing(4)
@@ -204,7 +210,8 @@ def _read_config_file(path: Path) -> str:
 class ConfigsDialog(Dialog):
     """Configs as text or files, into a chosen group — or a new group with optional configs."""
 
-    def __init__(self, parent, groups: list[tuple[str, str]], group_id: str = "", new_group: bool = False):
+    def __init__(self, parent, groups: list[tuple[str, str]], group_id: str = "", new_group: bool = False,
+                 text: str = ""):
         if new_group:
             super().__init__(parent, "Новая группа", "Новая группа",
                              "Группа — ваша папка для конфигов. Дайте ей название и, если хотите, сразу добавьте "
@@ -239,7 +246,7 @@ class ConfigsDialog(Dialog):
         self.edit = QPlainTextEdit()
         self.edit.setPlaceholderText('vless://…\nhy2://…\n\nили {"outbounds": [...]}')
         self.edit.setFont(theme.font(9, mono=True))
-        clip = QGuiApplication.clipboard().text().strip()
+        clip = text or QGuiApplication.clipboard().text().strip()
         first = clip.splitlines()[0] if clip else ""
         if links.is_link(first) or clip[:1] in "[{":
             self.edit.setPlainText(clip)

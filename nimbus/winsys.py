@@ -317,6 +317,49 @@ def autostart_is_this_exe(name: str) -> bool:
     return str(value).lower().startswith(subprocess.list2cmdline([sys.executable]).lower())
 
 
+CLASSES_KEY = r"Software\Classes"
+
+
+def _open_command() -> str:
+    """How Windows should start this copy with a link: `"Nimbus.exe" "%1"`."""
+    return f'"{sys.executable}" "%1"'
+
+
+def url_scheme_command(scheme: str) -> str:
+    """The command HKCU\\Software\\Classes\\<scheme> opens links with ("" if there's none)."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, rf"{CLASSES_KEY}\{scheme}\shell\open\command") as k:
+            return str(winreg.QueryValueEx(k, "")[0])
+    except OSError:
+        return ""
+
+
+def register_url_scheme(scheme: str, title: str) -> None:
+    """Make <scheme>:// links open this exe (per user, no administrator rights needed)."""
+    if url_scheme_command(scheme) == _open_command():
+        return
+    base = rf"{CLASSES_KEY}\{scheme}"
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, base) as k:
+        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, f"URL:{title}")
+        winreg.SetValueEx(k, "URL Protocol", 0, winreg.REG_SZ, "")
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, base + r"\DefaultIcon") as k:
+        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, f'"{sys.executable}",0')
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, base + r"\shell\open\command") as k:
+        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, _open_command())
+
+
+def unregister_url_scheme(scheme: str) -> None:
+    """Remove <scheme>:// if it opens this very exe (a portable copy elsewhere keeps its own)."""
+    if url_scheme_command(scheme).lower() != _open_command().lower():
+        return
+    base = rf"{CLASSES_KEY}\{scheme}"
+    for sub in (r"\shell\open\command", r"\shell\open", r"\shell", r"\DefaultIcon", ""):
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, base + sub)
+        except OSError:
+            pass
+
+
 def set_autostart(enabled: bool, name: str) -> None:
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
         if enabled:

@@ -271,6 +271,16 @@ QMenu::separator {{ height: 1px; background: {BORDER}; margin: 6px 8px; }}
 QMenu#tray {{ padding: 4px; }}
 QMenu#tray::item {{ padding: 5px 16px 5px 10px; }}
 QMenu#tray::separator {{ margin: 3px 6px; }}
+QTextBrowser {{
+    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 9px; padding: 6px 8px;
+    selection-background-color: {WHITE}; selection-color: {BLACK};
+}}
+QProgressBar {{ background: {SURFACE_2}; border: none; border-radius: 3px; }}
+QProgressBar::chunk {{ background: {WHITE}; border-radius: 3px; }}
+QPushButton#disclosure, QPushButton#disclosure:hover, QPushButton#disclosure:pressed {{
+    background: transparent; border: none; padding: 4px 0; text-align: left; color: {TEXT_2}; font-weight: 600;
+}}
+QPushButton#disclosure:hover {{ color: {TEXT}; }}
 QToolTip {{ background: {SURFACE_2}; color: {TEXT}; border: 1px solid {BORDER_2}; padding: 6px 8px; }}
 QMessageBox QLabel {{ min-width: 320px; }}
 """

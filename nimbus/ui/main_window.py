@@ -14,12 +14,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from .. import paths, qr, share, winsys
+from .. import deeplink, paths, qr, share, winsys
 from ..config_builder import active_preset, provider_routing
 from ..controller import Controller
 from ..store import Balancer, Server
 from . import flags, icons, theme
-from .dialogs import AddDialog, BalancerDialog, ConfigsDialog, LogDialog, UserAgentDialog, ask, get_text, plural
+from .dialogs import AddDialog, BalancerDialog, ConfigsDialog, LogDialog, UserAgentDialog, ask, get_text, inform, \
+    plural
 from .presets import describe
 from .server_list import BALANCERS, Row, ServerList
 from .settings_dialog import SettingsDialog
@@ -36,6 +37,9 @@ SORT_MODES = [("source", "Порядок", "Как в подписке у про
 PROTO_NAMES = {"vless": "VLESS", "vmess": "VMess", "trojan": "Trojan", "ss": "Shadowsocks",
                "shadowsocks": "Shadowsocks", "hysteria": "Hysteria2", "hysteria2": "Hysteria2", "hy2": "Hysteria2",
                "socks": "SOCKS5", "wireguard": "WireGuard", "wg": "WireGuard", "http": "HTTP"}
+CRYPT_TEXT = ("Это зашифрованная ссылка Happ (happ://crypt…): защищённый формат Happ, Nimbus такие ссылки "
+              "не расшифровывает. Попросите у VPN-провайдера обычную ссылку на подписку — она начинается "
+              "с https://. Её можно вставить в Nimbus кнопкой «Добавить» или клавишами Ctrl+V.")
 ROUTE_TIPS = {
     True: "Умная* — маршруты из вашей подписки: какие сайты открываются без VPN, решает VPN-провайдер",
     False: "Весь трафик, включая российские сайты, идёт через VPN",
@@ -1069,12 +1073,41 @@ class MainWindow(QMainWindow):
         text = text.strip()
         if not text:
             return
+        if self.open_link(text, confirm=False):
+            return
         if text.lower().startswith(("http://", "https://")) and "\n" not in text:
             self.ctl.add_subscription(text)
         else:
             n = self.ctl.import_text(text)
             if n:
                 self.toaster.show(f"Добавлено серверов: {n}")
+
+    def open_link(self, text: str, confirm: bool = True) -> bool:
+        """A deep link (nimbus://import/…, happ://add/…, v2rayn://install-sub?url=… and the like).
+        confirm: it came from outside (a browser), so the user sees what gets added first.
+        False if `text` isn't a deep link."""
+        link = deeplink.parse(text)
+        if link is None:
+            return False
+        if link.kind == "crypt":
+            inform(self, "Защищённая ссылка Happ", CRYPT_TEXT)
+        elif link.kind == "subscription":
+            if not confirm:
+                self.ctl.add_subscription(link.payload)
+                return True
+            dlg = AddDialog(self, link.payload)
+            if dlg.exec() and dlg.text():
+                self._import(dlg.text())
+        elif link.kind == "configs":
+            if confirm:
+                self.add_configs(MANUAL, link.payload)
+            else:
+                n = self.ctl.import_text(link.payload)
+                if n:
+                    self.toaster.show(f"Добавлено серверов: {n}")
+        else:
+            self.toaster.show("В ссылке нет адреса подписки или конфигов", error=True)
+        return True
 
     def add_menu(self, button: QWidget) -> None:
         menu = QMenu(self)
@@ -1092,8 +1125,8 @@ class MainWindow(QMainWindow):
     def _import_chunks(self, chunks: list[str], gid: str) -> int:
         return sum(self.ctl.import_text(c, self._owner(gid)) for c in chunks)
 
-    def add_configs(self, gid: str = MANUAL) -> None:
-        dlg = ConfigsDialog(self, self._groups(), gid)
+    def add_configs(self, gid: str = MANUAL, text: str = "") -> None:
+        dlg = ConfigsDialog(self, self._groups(), gid, text=text)
         if dlg.exec():
             target = dlg.group_id()
             n = self._import_chunks(dlg.chunks(), target)

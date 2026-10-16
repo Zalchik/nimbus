@@ -1,6 +1,10 @@
 ; Nimbus installer (Inno Setup 6). Built by build.py, which passes:
 ;   /DAppVersion=0.2.0  /DSourceDir=<dist\...\Nimbus>  /DOutputDir=<dist\0.2.0>  /DIconFile=<nimbus.ico>
 ;
+; Nimbus updates itself by running the new setup with
+;   /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NIMBUSRESTART=1   (or =connect: reconnect afterwards)
+; A silent update starts Nimbus again if it was running or if /NIMBUSRESTART asks for it.
+;
 ; Installs per user into %LOCALAPPDATA%\Programs\Nimbus: no administrator rights needed, and
 ; Nimbus can update its own files. Data stays in %APPDATA%\Nimbus (no "portable" marker here).
 ; Running a newer setup over an installed Nimbus updates it in place: the same AppId finds the
@@ -75,8 +79,17 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "portable,\data\*"; Flags:
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
+[Registry]
+; nimbus://import/<subscription URL> links ("add to Nimbus" buttons) open Nimbus. Per user, like the install.
+Root: HKCU; Subkey: "Software\Classes\nimbus"; ValueType: string; ValueName: ""; ValueData: "URL:Nimbus"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\nimbus"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\nimbus\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"",0"
+Root: HKCU; Subkey: "Software\Classes\nimbus\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
+
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
+; After a silent update (Nimbus updating itself, or a script) Nimbus comes back.
+Filename: "{app}\{#AppExe}"; Parameters: "{code:RestartArgs}"; Flags: nowait skipifnotsilent; Check: RestartAfterSilentUpdate
 
 [UninstallRun]
 ; Disconnect and quit the running copy (puts the system proxy back), drop its autostart entry.
@@ -88,6 +101,9 @@ Type: filesandordirs; Name: "{app}\core"
 Type: dirifempty; Name: "{app}"
 
 [Code]
+var
+  WasRunning: Boolean;
+
 function QuitRunningNimbus(): Boolean;
 var
   Exe, Dir, Cmd: String;
@@ -98,6 +114,8 @@ begin
   Exe := Dir + '\{#AppExe}';
   if not FileExists(Exe) then
     Exit;
+  // A running copy holds this mutex (see nimbus/ui/app.py): it is started again after a silent update.
+  WasRunning := CheckForMutexes('Local\{#AppName}-' + GetUserNameString());
   // The old version is asked to quit the normal way: it disconnects and restores the proxy.
   Exec(Exe, '--quit', '', SW_HIDE, ewWaitUntilTerminated, Code);
   // Whatever is still running from this folder (an old version without --quit, a stuck core)
@@ -106,6 +124,18 @@ begin
          Dir + '\'', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force -ErrorAction SilentlyContinue"';
   Exec('powershell.exe', Cmd, '', SW_HIDE, ewWaitUntilTerminated, Code);
   Sleep(500);
+end;
+
+function RestartAfterSilentUpdate(): Boolean;
+begin
+  Result := WasRunning or (ExpandConstant('{param:NIMBUSRESTART|}') <> '');
+end;
+
+function RestartArgs(Param: String): String;
+begin
+  Result := '--updated';
+  if CompareText(ExpandConstant('{param:NIMBUSRESTART|}'), 'connect') = 0 then
+    Result := Result + ' --connect';
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

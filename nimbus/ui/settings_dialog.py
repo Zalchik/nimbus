@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
-from .. import paths, subscription, winsys
+from .. import paths, subscription, updater, winsys
 from ..settings import Settings
 from . import theme
 from .dialogs import UserAgentPicker
@@ -115,6 +115,9 @@ class SettingsDialog(QDialog):
             ("auto_connect", None, self._check(s.auto_connect, "Подключаться при запуске")),
             ("minimize_to_tray", None, self._check(s.minimize_to_tray, "Закрытие окна сворачивает в трей")),
             ("balancer_notify", None, self._check(s.balancer_notify, "Сообщать, когда балансировщик меняет сервер")),
+            ("update_check", None, self._check(s.update_check, "Проверять обновления (при запуске и каждые "
+                                                               f"{updater.CHECK_HOURS} ч)")),
+            (None, None, self._update_row()),
             (None, None, _hint(f"{paths.APP_NAME} {paths.VERSION} · "
                                f"{'portable' if paths.PORTABLE else 'установлен' if paths.UNINSTALLER else 'без установки'}"
                                f" · ядро Xray-core · шрифт Montserrat · "
@@ -171,6 +174,42 @@ class SettingsDialog(QDialog):
             h.addWidget(remove)
         h.addStretch()
         return row
+
+    def _update_row(self) -> QWidget:
+        """«Проверить обновления» and what the check found; a newer version opens its own dialog."""
+        row = QWidget()
+        h = QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(12)
+        self._update_btn = self._button("Проверить обновления", self._check_updates)
+        h.addWidget(self._update_btn)
+        self._update_status = QLabel(objectName="muted")
+        h.addWidget(self._update_status, 1)
+        self.ctl.update_checked.connect(self._on_update_checked)
+        return row
+
+    def _check_updates(self) -> None:
+        self._update_btn.setEnabled(False)
+        self._update_status.setText("Проверяем…")
+        self.ctl.check_updates(manual=True)
+
+    def _on_update_checked(self, release, manual: bool, error: str) -> None:
+        if not manual:
+            return
+        self._update_btn.setEnabled(True)
+        if error:
+            self._update_status.setText(f"Не удалось проверить: {error}")
+        elif release:
+            self._update_status.setText(f"Доступна версия {release.version}")
+        else:
+            self._update_status.setText(f"Установлена последняя версия ({paths.VERSION})")
+
+    def done(self, result: int) -> None:
+        try:
+            self.ctl.update_checked.disconnect(self._on_update_checked)
+        except (RuntimeError, TypeError):
+            pass
+        super().done(result)
 
     def _uninstall(self) -> None:
         # The uninstaller asks for confirmation itself, then closes this copy with --quit.

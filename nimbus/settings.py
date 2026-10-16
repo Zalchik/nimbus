@@ -67,6 +67,8 @@ class Settings:
     start_minimized: bool = False
     minimize_to_tray: bool = True
     balancer_notify: bool = True        # a toast (or tray notice) when a balancer moves to another server
+    update_check: bool = True           # look for a new release on GitHub at launch and every few hours
+    update_skip: str = ""               # version the user said "never" to; a newer one is offered again
     theme: str = "dark"                 # dark | light
     selected_server: str = ""
     recent_servers: list = field(default_factory=list)   # servers / balancers last connected to, newest first

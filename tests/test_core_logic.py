@@ -12,6 +12,7 @@ import tempfile
 import time
 import unittest
 from dataclasses import replace
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -707,6 +708,210 @@ class BalancerTests(unittest.TestCase):
     def test_plain_names(self):
         self.assertEqual(balancer.plain("\U0001F1F3\U0001F1F1 Нидерланды"), "Нидерланды")
         self.assertEqual(balancer.plain("Без флага"), "Без флага")
+
+
+class UpdaterTests(unittest.TestCase):
+    RELEASE = {"tag_name": "v0.3.0", "draft": False, "prerelease": False, "body": "## Что нового\n- всё",
+               "published_at": "2026-10-16T09:17:44Z",
+               "html_url": "https://github.com/Zalchik/nimbus/releases/v0.3.0",
+               "assets": [{"name": "Nimbus-0.3.0-setup.exe", "size": 5,
+                           "browser_download_url": "https://example.com/Nimbus-0.3.0-setup.exe"},
+                          {"name": "SHA256SUMS.txt", "size": 90,
+                           "browser_download_url": "https://example.com/SHA256SUMS.txt"}]}
+
+    def test_versions(self):
+        from nimbus import updater
+        self.assertEqual(updater.parse_version("v0.2.10"), (0, 2, 10))
+        self.assertIsNone(updater.parse_version("v0.3.0-beta"))
+        self.assertIsNone(updater.parse_version("latest"))
+        self.assertTrue(updater.is_newer("v0.2.10", "0.2.9"))
+        self.assertTrue(updater.is_newer("0.3", "0.2.9"))
+        self.assertFalse(updater.is_newer("v0.2.0", "0.2.0"))
+        self.assertFalse(updater.is_newer("0.2", "0.2.0"))
+        self.assertFalse(updater.is_newer("0.1.9", "0.2.0"))
+        self.assertFalse(updater.is_newer("nightly", "0.2.0"))
+
+    def test_release_parsing(self):
+        from nimbus import updater
+        r = updater.parse_release(self.RELEASE)
+        self.assertEqual((r.version, r.tag), ("0.3.0", "v0.3.0"))
+        self.assertEqual(time.strftime("%Y-%m-%d %H:%M", time.gmtime(r.published)), "2026-10-16 09:17")
+        self.assertEqual(r.assets["Nimbus-0.3.0-setup.exe"].size, 5)
+        self.assertIsNone(updater.parse_release({**self.RELEASE, "draft": True}))
+        self.assertIsNone(updater.parse_release({**self.RELEASE, "prerelease": True}))
+        self.assertEqual(updater.asset_name("0.3.0", "setup"), "Nimbus-0.3.0-setup.exe")
+        self.assertEqual(updater.asset_name("0.3.0", "portable"), "Nimbus-0.3.0-portable.zip")
+
+    def test_checksums_and_verify(self):
+        from nimbus import updater
+        h = "a" * 64
+        text = f"{h}  Nimbus-0.3.0-setup.exe\r\n{'B' * 64} *Nimbus-0.3.0-portable.zip\ngarbage line\n"
+        self.assertEqual(updater.parse_checksums(text),
+                         {"Nimbus-0.3.0-setup.exe": h, "Nimbus-0.3.0-portable.zip": "b" * 64})
+        updater.verify(5, h, 5, h.upper())
+        updater.verify(5, h, 0, "")   # nothing known: nothing to check
+        with self.assertRaises(updater.UpdateError):
+            updater.verify(4, h, 5, h)
+        with self.assertRaises(updater.UpdateError):
+            updater.verify(5, "c" * 64, 5, h)
+
+    def test_setup_args_are_silent(self):
+        from nimbus import updater
+        args = updater.setup_args(Path("C:/t/Nimbus-0.3.0-setup.exe"), connect=True)
+        for flag in ("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NIMBUSRESTART=connect"):
+            self.assertIn(flag, args)
+
+    def _download(self, files: dict, release: dict):
+        """updater.download against a fake GitHub serving `files` by name."""
+        import httpx
+        from nimbus import updater
+
+        def handler(request):
+            name = request.url.path.rsplit("/", 1)[-1]
+            return httpx.Response(200, content=files[name]) if name in files else httpx.Response(404)
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        old_work = updater.WORK_DIR
+        with tempfile.TemporaryDirectory() as tmp:
+            updater.WORK_DIR = Path(tmp)
+            updater.httpx.get = lambda url, **kw: client.get(url, headers=kw.get("headers"))
+            updater.httpx.stream = lambda method, url, **kw: client.stream(method, url, headers=kw.get("headers"))
+            try:
+                seen = []
+                path = updater.download(updater.parse_release(release), "setup",
+                                        progress=lambda d, t: seen.append(d))
+                return path.read_bytes(), seen
+            finally:
+                updater.WORK_DIR = old_work
+                del updater.httpx.get, updater.httpx.stream   # back to the real module's
+
+    def test_download_checks_sha256(self):
+        import hashlib
+        from nimbus import updater
+        data = b"hello"
+        good = f"{hashlib.sha256(data).hexdigest()}  Nimbus-0.3.0-setup.exe\n".encode()
+        got, seen = self._download({"Nimbus-0.3.0-setup.exe": data, "SHA256SUMS.txt": good}, self.RELEASE)
+        self.assertEqual(got, data)
+        self.assertEqual(seen[-1], 5)
+        bad = f"{'0' * 64}  Nimbus-0.3.0-setup.exe\n".encode()
+        with self.assertRaises(updater.UpdateError):
+            self._download({"Nimbus-0.3.0-setup.exe": data, "SHA256SUMS.txt": bad}, self.RELEASE)
+        # Without a checksum file only the size is checked.
+        no_sums = {**self.RELEASE, "assets": self.RELEASE["assets"][:1]}
+        self.assertEqual(self._download({"Nimbus-0.3.0-setup.exe": data}, no_sums)[0], data)
+        with self.assertRaises(updater.UpdateError):
+            self._download({"Nimbus-0.3.0-setup.exe": b"hell"}, no_sums)
+
+    def test_unpack_rejects_paths_outside(self):
+        import zipfile
+        from nimbus import updater
+        with tempfile.TemporaryDirectory() as tmp:
+            good = Path(tmp) / "good.zip"
+            with zipfile.ZipFile(good, "w") as z:
+                z.writestr(f"Nimbus/{Path(sys.executable).name}", b"exe")
+                z.writestr("Nimbus/portable", b"")
+            self.assertEqual(updater.unpack(good).name, "Nimbus")
+            bad = Path(tmp) / "bad.zip"
+            with zipfile.ZipFile(bad, "w") as z:
+                z.writestr("../evil.txt", b"x")
+            with self.assertRaises(updater.UpdateError):
+                updater.unpack(bad)
+            self.assertFalse((Path(tmp) / "evil.txt").exists())
+
+
+class SwapTests(unittest.TestCase):
+    @staticmethod
+    def _tree(root: Path, files: dict) -> None:
+        for name, text in files.items():
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            (root / name).write_text(text, "utf-8")
+
+    @staticmethod
+    def _read(root: Path) -> dict:
+        return {p.relative_to(root).as_posix(): p.read_text("utf-8") for p in root.rglob("*") if p.is_file()}
+
+    def _dirs(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src, dst = Path(tmp.name) / "new", Path(tmp.name) / "app"
+        self._tree(src, {"Nimbus.exe": "new exe", "_internal/b.dll": "b", "core/xray.exe": "x2",
+                         "portable": "marker from the zip", "data/settings.json": "{}"})
+        self._tree(dst, {"Nimbus.exe": "old exe", "_internal/a.dll": "a", "core/xray.exe": "x1",
+                         "portable": "my marker", "data/settings.json": '{"mine": 1}', "data/logs/l.txt": "log"})
+        return src, dst
+
+    def test_replace_keeps_data_and_marker(self):
+        from nimbus import swap
+        src, dst = self._dirs()
+        swap.replace(src, dst)
+        self.assertEqual(self._read(dst), {"Nimbus.exe": "new exe", "_internal/b.dll": "b", "core/xray.exe": "x2",
+                                           "portable": "my marker", "data/settings.json": '{"mine": 1}',
+                                           "data/logs/l.txt": "log"})
+
+    def test_failed_copy_rolls_back(self):
+        from nimbus import swap
+        src, dst = self._dirs()
+        before = self._read(dst)
+        calls = []
+
+        def copy(a, b):
+            calls.append(a.name)
+            if len(calls) == 2:
+                raise PermissionError("locked")
+            swap._copy(a, b)
+        with self.assertRaises(PermissionError):
+            swap.replace(src, dst, copy=copy)
+        self.assertEqual(self._read(dst), before)
+        self.assertFalse((dst / swap.BACKUP).exists())
+
+    def test_wait_for_exit(self):
+        from nimbus import swap
+        p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1)"])
+        self.assertFalse(swap.wait_for_exit(p.pid, timeout=0.05))
+        self.assertTrue(swap.wait_for_exit(p.pid, timeout=10))
+        p.wait()
+
+
+class DeepLinkTests(unittest.TestCase):
+    SUB = "https://panel.example.com/sub/AbC?x=1&y=2"
+
+    def test_formats(self):
+        from urllib.parse import quote
+        from nimbus import deeplink
+        enc = quote(self.SUB, safe="")
+        for text in (f"nimbus://import/{self.SUB}", f"nimbus://import/{enc}", f"NIMBUS://import?url={enc}",
+                     f"happ://add/{self.SUB}", f"v2rayn://install-sub?url={enc}&name=My",
+                     f"clash://install-config?url={enc}", f"sing-box://import-remote-profile?url={enc}#My"):
+            link = deeplink.parse(text)
+            self.assertEqual((link.kind, link.payload), ("subscription", self.SUB), text)
+        self.assertEqual(deeplink.parse(f"v2rayn://install-sub?url={enc}&name=My").name, "My")
+        self.assertEqual(deeplink.parse(f"sing-box://import-remote-profile?url={enc}#My").name, "My")
+
+    def test_configs_crypt_and_others(self):
+        from urllib.parse import quote
+        from nimbus import deeplink
+        vless = LINKS["vless-reality"]
+        self.assertEqual(deeplink.parse("nimbus://import/" + quote(vless, safe="")).kind, "configs")
+        for crypt in ("happ://crypt/abcdef", "happ://crypt2/abc", "happ://crypt5/xyz", "HAPP://CRYPT3/q"):
+            self.assertEqual(deeplink.parse(crypt).kind, "crypt", crypt)
+        self.assertEqual(deeplink.parse("nimbus://import/not a link").kind, "invalid")
+        self.assertEqual(deeplink.parse("v2rayn://install-sub").kind, "invalid")
+        self.assertIsNone(deeplink.parse(self.SUB))
+        self.assertIsNone(deeplink.parse(vless))
+        self.assertEqual(deeplink.from_args(["--autostart", "nimbus://import/x"]), "nimbus://import/x")
+        self.assertEqual(deeplink.from_args(["--connect"]), "")
+
+    def test_url_scheme_registration(self):
+        if sys.platform != "win32":
+            self.skipTest("Windows registry")
+        from nimbus import winsys
+        scheme = "nimbus-test-scheme"
+        try:
+            winsys.register_url_scheme(scheme, "Nimbus test")
+            self.assertTrue(winsys.url_scheme_command(scheme).endswith('"%1"'))
+            self.assertIn(Path(sys.executable).name.lower(), winsys.url_scheme_command(scheme).lower())
+        finally:
+            winsys.unregister_url_scheme(scheme)
+        self.assertEqual(winsys.url_scheme_command(scheme), "")
 
 
 if __name__ == "__main__":

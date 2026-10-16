@@ -3,11 +3,14 @@
   Nimbus/                          the app folder (keeps data in %APPDATA%, like an installed copy)
   Nimbus-<version>-portable.zip    the same plus a "portable" marker: data stays in Nimbus/data
   Nimbus-<version>-setup.exe       installer; also updates an installed copy, has an uninstaller
+  SHA256SUMS.txt                   checksums of the two above; upload it with them: the in-app
+                                   updater checks downloads against it
 
 Requires: PySide6, httpx, pyinstaller, Pillow, and vendor/xray with xray.exe, sing-box.exe (TUN), geo files.
 The setup needs Inno Setup 6 (https://jrsoftware.org/isinfo.php); without it the rest is still built.
 Run: python build.py
 """
+import hashlib
 import io
 import os
 import shutil
@@ -84,6 +87,18 @@ def make_setup(app_dir: Path, icon: Path) -> Path | None:
     return DIST / f"Nimbus-{VERSION}-setup.exe"
 
 
+def write_checksums(files: list[Path], out: Path) -> None:
+    """sha256sum-style list ("<hex>  <name>") that the in-app updater checks downloads against."""
+    lines = []
+    for f in files:
+        h = hashlib.sha256()
+        with open(f, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        lines.append(f"{h.hexdigest()}  {f.name}")
+    out.write_bytes("".join(line + "\n" for line in lines).encode())
+
+
 def main() -> None:
     missing = [f for f in CORE_FILES if not (VENDOR / f).exists()]
     if missing:
@@ -133,9 +148,12 @@ def main() -> None:
     archive = DIST / f"Nimbus-{VERSION}-portable.zip"
     make_portable_zip(app_dir, archive)
     setup = make_setup(app_dir, icon)
+    sums = DIST / "SHA256SUMS.txt"
+    write_checksums([archive] + ([setup] if setup else []), sums)
     print(f"\nBuilt    {app_dir}\nPortable {archive} ({archive.stat().st_size / 1e6:.1f} MB)")
     if setup:
         print(f"Setup    {setup} ({setup.stat().st_size / 1e6:.1f} MB)")
+    print(f"Sums     {sums}  (upload it to the release too)")
 
 
 if __name__ == "__main__":

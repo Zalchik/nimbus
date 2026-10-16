@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import getpass
 import sys
+import threading
 import time
 
 from PySide6.QtCore import Qt, QTimer
@@ -10,7 +11,7 @@ from PySide6.QtGui import QAction, QFont, QFontMetrics
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from .. import balancer, paths, winsys
+from .. import balancer, deeplink, paths, updater, winsys
 from ..controller import Controller
 from ..settings import Settings
 from . import flags, icons, theme
@@ -22,6 +23,7 @@ INSTANCE_KEY = f"{paths.APP_NAME}-{getpass.getuser()}"
 
 
 def _signal_running_instance(msg: bytes) -> bool:
+    """Send msg to the running copy: b"show", b"quit" or b"link <url>"."""
     sock = QLocalSocket()
     sock.connectToServer(INSTANCE_KEY)
     if not sock.waitForConnected(300):
@@ -35,6 +37,7 @@ def _signal_running_instance(msg: bytes) -> bool:
 class App:
     def __init__(self, argv: list[str]):
         self.args = set(argv[1:])
+        self.link = deeplink.from_args(argv[1:])   # nimbus://… the OS started us with
         self.qt = QApplication(argv)
         self.qt.setApplicationName(paths.APP_NAME)
         self.qt.setQuitOnLastWindowClosed(False)
@@ -57,8 +60,9 @@ class App:
             if self._mutex:
                 break
             if time.time() >= deadline:
+                msg = b"link " + self.link.encode() if self.link else b"show"
                 for _ in range(10):  # the other copy may still be starting up
-                    if _signal_running_instance(b"show"):
+                    if _signal_running_instance(msg):
                         break
                     time.sleep(0.3)
                 return 0
@@ -74,6 +78,9 @@ class App:
         self.win = MainWindow(self.ctl)
         self.win.quit_requested.connect(self.quit)
         self.ctl.need_admin.connect(self._ask_elevation)
+        self.ctl.update_checked.connect(self._on_update_checked)
+        self._update_dialog = None
+        self._pending_update = None
         self._build_tray()
 
         minimized = "--autostart" in self.args and self.ctl.settings.start_minimized
@@ -86,6 +93,18 @@ class App:
             self.ctl.update_subscriptions()
         if "--connect" in self.args or s.auto_connect:
             QTimer.singleShot(300, self.ctl.connect)
+        if self.link:
+            QTimer.singleShot(200, lambda: (self.show_window(), self.win.open_link(self.link)))
+        if "--updated" in self.args:
+            QTimer.singleShot(600, lambda: self.win.toaster.show(f"Nimbus обновлён до версии {paths.VERSION}"))
+        elif "--update-failed" in self.args:
+            QTimer.singleShot(600, lambda: self.win.toaster.show(
+                "Обновление не установилось: файлы программы были заняты. Прежняя версия на месте, "
+                "попробуйте ещё раз", error=True))
+        QTimer.singleShot(1500, self._register_links)
+        QTimer.singleShot(10_000, self.ctl.maybe_check_updates)
+        # What the last update left in the temp folder; later, so a swap helper has surely exited.
+        QTimer.singleShot(60_000, lambda: threading.Thread(target=updater.cleanup, daemon=True).start())
         self.qt.aboutToQuit.connect(self.ctl.shutdown)
         return self.qt.exec()
 
@@ -122,6 +141,7 @@ class App:
         self.tray_menu.aboutToShow.connect(self._fill_tray)
         self._fill_tray()
         self.tray.setContextMenu(self.tray_menu)
+        self.tray.messageClicked.connect(self.show_window)
         self.tray.activated.connect(
             lambda reason: self.show_window() if reason == QSystemTrayIcon.Trigger else None)
         self.tray.show()
@@ -286,6 +306,41 @@ class App:
         for mode, act in self.tray_mode.items():
             act.setChecked(mode == self.ctl.settings.tunnel_mode)
 
+    @staticmethod
+    def _register_links() -> None:
+        """nimbus:// links open this copy (an installed one also gets it from the installer)."""
+        if getattr(sys, "frozen", False):
+            try:
+                winsys.register_url_scheme(deeplink.SCHEME, paths.APP_NAME)
+            except OSError:
+                pass
+
+    # -- updates -------------------------------------------------------------------------
+    def _on_update_checked(self, release, manual: bool, error: str) -> None:
+        if release is None:
+            return
+        if manual or (self.win.isVisible() and not self.win.isMinimized()):
+            self._show_update(release)
+        else:
+            # In the tray: say so, and offer the dialog when the window opens.
+            self._pending_update = release
+            self.tray.showMessage(paths.APP_NAME, f"Доступна новая версия {release.version}. "
+                                                  f"Откройте Nimbus, чтобы обновиться.",
+                                  QSystemTrayIcon.Information, 8000)
+
+    def _show_update(self, release) -> None:
+        from .update_dialog import UpdateDialog
+
+        self._pending_update = None
+        if self._update_dialog is not None and self._update_dialog.isVisible():
+            return
+        parent = QApplication.activeModalWidget() or self.win
+        dlg = self._update_dialog = UpdateDialog(parent, self.ctl, release, self.quit)
+        dlg.setWindowModality(Qt.ApplicationModal)
+        dlg.setAttribute(Qt.WA_DeleteOnClose)
+        dlg.destroyed.connect(lambda: setattr(self, "_update_dialog", None))
+        dlg.show()
+
     def _on_message(self, level: str, text: str) -> None:
         if not self.win.isVisible():
             icon = QSystemTrayIcon.Warning if level == "error" else QSystemTrayIcon.Information
@@ -296,12 +351,21 @@ class App:
         self.win.setWindowState(self.win.windowState() & ~Qt.WindowMinimized)
         self.win.raise_()
         self.win.activateWindow()
+        if self._pending_update is not None:
+            release = self._pending_update
+            QTimer.singleShot(300, lambda: self._show_update(release))
 
     def _on_instance_message(self) -> None:
         sock = self.server.nextPendingConnection()
-        sock.waitForReadyRead(300)
-        msg = bytes(sock.readAll())
-        if msg.startswith(b"show"):
+        msg = b""
+        while sock.waitForReadyRead(300):   # a long link may come in several pieces
+            msg += bytes(sock.readAll())
+        msg += bytes(sock.readAll())
+        if msg.startswith(b"link "):
+            self.show_window()
+            link = msg[5:].decode("utf-8", "replace").strip()
+            QTimer.singleShot(0, lambda: self.win.open_link(link))
+        elif msg.startswith(b"show"):
             self.show_window()
         elif msg.startswith(b"quit"):
             self.quit()
@@ -323,6 +387,8 @@ class App:
             restore_proxy_after_crash()
         if "--uninstall" in self.args and winsys.autostart_is_this_exe(paths.APP_NAME):
             winsys.set_autostart(False, paths.APP_NAME)
+        if "--uninstall" in self.args:
+            winsys.unregister_url_scheme(deeplink.SCHEME)
         return 0 if gone else 1
 
     # -- elevation -----------------------------------------------------------------------

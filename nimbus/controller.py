@@ -1,6 +1,7 @@
 """App logic between the UI and the core. Lives in the Qt main thread."""
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import asdict
@@ -9,7 +10,7 @@ from typing import Callable
 from .lazy import httpx
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from . import balancer, config_builder, exit_ip, paths, ping, subscription, winsys
+from . import balancer, config_builder, exit_ip, paths, ping, subscription, updater, winsys
 from .core import CoreError, XrayCore, free_port, restore_proxy_after_crash, test_config
 from .settings import Settings
 from .store import Balancer, Group, Server, Store, Subscription, new_id
@@ -54,6 +55,7 @@ class Controller(QObject):
     ping_finished = Signal(object)       # ids of a finished ping run (its last results may have been -1)
     exit_ip = Signal(str, str, str)      # status ("" | checking | ok | fail), IP, country code
     node = Signal(str)                   # server a connected balancer goes through now ("" = unknown)
+    update_checked = Signal(object, bool, str)   # newer Release or None, manual check, error ("" = none)
 
     def __init__(self):
         super().__init__()
@@ -92,6 +94,12 @@ class Controller(QObject):
         self._egress_timer = QTimer(self)
         self._egress_timer.setInterval(4000)
         self._egress_timer.timeout.connect(self._check_egress)
+        # New releases: at launch (App starts the first check) and every CHECK_HOURS after it.
+        self._update_last = 0.0
+        self._update_timer = QTimer(self)
+        self._update_timer.setInterval(30 * 60 * 1000)
+        self._update_timer.timeout.connect(self.maybe_check_updates)
+        self._update_timer.start()
 
     # -- threading helpers ---------------------------------------------------------------
     def _ui(self, fn: Callable, arg=None) -> None:
@@ -396,6 +404,51 @@ class Controller(QObject):
                 self.need_admin.emit()
             else:
                 self.reconnect()
+
+    # -- app updates ---------------------------------------------------------------------
+    def maybe_check_updates(self) -> None:
+        if self.settings.update_check and time.time() - self._update_last >= updater.CHECK_HOURS * 3600:
+            self.check_updates()
+
+    def check_updates(self, manual: bool = False) -> None:
+        """Ask GitHub for the latest release; update_checked tells the result. A version the user
+        skipped is offered again only when asked by hand."""
+        self._update_last = time.time()
+        proxy = self._proxy_for_downloads()
+
+        def done(release):
+            newer = release if release and updater.is_newer(release.version) else None
+            if newer and not manual and newer.version == self.settings.update_skip:
+                newer = None
+            self.update_checked.emit(newer, manual, "")
+
+        def fail(err):
+            self.update_checked.emit(None, manual, str(err) or type(err).__name__)
+        self.run_async(lambda: updater.latest(proxy), done, fail)
+
+    def download_update(self, release, kind: str, progress: Callable, done: Callable,
+                        fail: Callable) -> threading.Event:
+        """Download (through the VPN when connected) and check the update. progress gets
+        (bytes, total); setting the returned event cancels."""
+        stop = threading.Event()
+        proxy = self._proxy_for_downloads()
+        self.run_async(lambda: updater.prepare(release, kind, proxy, lambda d, t: self._ui(progress, (d, t)),
+                                               stop.is_set), done, fail)
+        return stop
+
+    def install_update(self, prepared, kind: str, quit_app: Callable, failed: Callable | None = None) -> None:
+        """Disconnect (the proxy settings go back), start the installer or the swap helper, quit.
+        A connection that was up comes back after the update."""
+        connect = self.state == "connected"
+
+        def go():
+            try:
+                updater.install(prepared, kind, os.getpid(), connect)
+            except Exception as e:
+                failed(e) if failed else self.message.emit("error", f"Не удалось запустить обновление: {e}")
+                return
+            quit_app()
+        self.disconnect(then=go)
 
     # -- subscriptions -------------------------------------------------------------------
     def _proxy_for_downloads(self) -> str | None:
