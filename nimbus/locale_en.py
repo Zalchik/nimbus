@@ -645,9 +645,11 @@ TEXTS = {
     # -- Linux ----------------------------------------------------------------------------------------
     "Разрешить режим TUN": "Allow TUN mode",
     "Режиму TUN нужны права на сетевой адаптер и маршруты. Nimbus один раз попросит пароль администратора и "
-    "выдаст эти права только ядру sing-box. Продолжить?":
+    "выдаст эти права только ядру sing-box, а также разрешит без пароля настраивать DNS своего адаптера. "
+    "Продолжить?":
         "TUN mode needs rights to a network adapter and routes. Nimbus asks for the administrator password "
-        "once and gives these rights to the sing-box core only. Continue?",
+        "once and gives these rights to the sing-box core only, and lets it set up DNS for its own adapter "
+        "without a password. Continue?",
     "Продолжить": "Continue",
     "Права для режима TUN не выданы.": "TUN mode rights weren't granted.",
     "Весь трафик компьютера, включая игры. Один раз попросит пароль администратора":

@@ -36,6 +36,24 @@ LOCAL_NETS = ["localhost", "127.0.0.0/8", "::1", "10.0.0.0/8", "172.16.0.0/12", 
 DESKTOP_FILE = "nimbus.desktop"
 
 
+def _host_environment(env=os.environ) -> None:
+    """A frozen build (PyInstaller) puts its bundled libraries first in LD_LIBRARY_PATH, and every
+    program we start inherits that: Fedora's gsettings loaded the AppImage's (Ubuntu's) GLib and
+    failed, so the system proxy was never switched on. Put the user's value back; this process
+    keeps its libraries (the loader reads the variable once, at startup)."""
+    if not getattr(sys, "frozen", False):
+        return
+    orig = env.pop("LD_LIBRARY_PATH_ORIG", None)
+    if orig:
+        env["LD_LIBRARY_PATH"] = orig
+    else:
+        env.pop("LD_LIBRARY_PATH", None)
+
+
+if sys.platform.startswith("linux"):
+    _host_environment()
+
+
 def _run(args: list[str], timeout: float = 5) -> str | None:
     """stdout of a helper program, or None if it's missing or failed."""
     try:
@@ -253,7 +271,28 @@ def singbox_path() -> Path:
 
 def _stamp(src: Path) -> str:
     st = src.stat()
-    return f"{st.st_size}:{st.st_mtime_ns}"
+    return f"{st.st_size}:{st.st_mtime_ns}:dns"   # ":dns": granted together with the polkit rule
+
+
+# On systemd-resolved systems sing-box runs resolvectl to send DNS through its adapter. resolvectl
+# doesn't inherit sing-box's capabilities, so each call (3 on connect, 1 on disconnect) asked for
+# the password. This rule lets the user change DNS settings of the Nimbus adapter only.
+POLKIT_RULE = Path("/etc/polkit-1/rules.d/49-nimbus.rules")
+# Run as root by pkexec: $1 setcap, $2 caps, $3 sing-box, $4 rule text ("": none), $5 rule file.
+GRANT_SCRIPT = ('"$1" "$2" "$3" || exit 1; [ -z "$4" ] && exit 0; '
+                'mkdir -p "$(dirname "$5")" && printf "%s" "$4" > "$5" && chmod 644 "$5"')
+
+
+def _polkit_rule(user: str, interface: str) -> str:
+    return ("// Nimbus: lets " + user + " point DNS at the Nimbus TUN adapter (sing-box runs resolvectl)\n"
+            "// without a password. Delete this file to undo.\n"
+            "polkit.addRule(function(action, subject) {\n"
+            "    if (action.id.indexOf(\"org.freedesktop.resolve1.\") == 0 &&\n"
+            f"        action.lookup(\"interface\") == {json.dumps(interface)} &&\n"
+            f"        subject.user == {json.dumps(user)} && subject.local && subject.active) {{\n"
+            "        return polkit.Result.YES;\n"
+            "    }\n"
+            "});\n")
 
 
 def tun_allowed() -> bool:
@@ -272,8 +311,12 @@ def tun_allowed() -> bool:
 
 def grant_tun() -> bool:
     """Copy sing-box out of the (read-only) app folder and give it the network capabilities with
-    one pkexec prompt. False if the user cancelled or something is missing."""
+    one pkexec prompt (plus the DNS rule, where systemd-resolved runs). False if the user
+    cancelled or something is missing."""
+    import pwd
+
     from .. import paths
+    from ..config_builder import TUN_NAME
     copy = singbox_path()
     copy.parent.mkdir(parents=True, exist_ok=True)
     tmp = copy.with_name("sing-box.new")
@@ -282,11 +325,13 @@ def grant_tun() -> bool:
     os.replace(tmp, copy)
     setcap = shutil.which("setcap") or next((p for p in ("/usr/sbin/setcap", "/sbin/setcap") if os.path.exists(p)),
                                             None)
-    pkexec = shutil.which("pkexec")
+    pkexec, sh = shutil.which("pkexec"), shutil.which("sh") or "/bin/sh"
     if not (setcap and pkexec):
         return False
+    rule = _polkit_rule(pwd.getpwuid(os.getuid()).pw_name, TUN_NAME) if shutil.which("resolvectl") else ""
     try:
-        ok = subprocess.run([pkexec, setcap, CAPS, str(copy)], stdin=subprocess.DEVNULL, timeout=300).returncode == 0
+        ok = subprocess.run([pkexec, sh, "-c", GRANT_SCRIPT, "sh", setcap, CAPS, str(copy), rule, str(POLKIT_RULE)],
+                            stdin=subprocess.DEVNULL, timeout=300).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
     if ok:

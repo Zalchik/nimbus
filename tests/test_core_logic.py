@@ -12,6 +12,7 @@ import tempfile
 import time
 import unittest
 from dataclasses import replace
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -1054,6 +1055,37 @@ class PlatformTests(unittest.TestCase):
                  "enp3s0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n")
         self.assertEqual(linux.parse_routes(table, "Nimbus"), ("enp3s0", False))
         self.assertIsNone(linux.parse_routes(table.splitlines()[0], "Nimbus"))
+
+    def test_linux_host_environment(self):
+        from nimbus.platform import linux
+        env = {"LD_LIBRARY_PATH": "/app/_internal:/opt/x", "LD_LIBRARY_PATH_ORIG": "/opt/x"}
+        linux._host_environment(env)   # not frozen: nothing changes
+        self.assertEqual(env["LD_LIBRARY_PATH"], "/app/_internal:/opt/x")
+        with mock.patch.object(sys, "frozen", True, create=True):
+            linux._host_environment(env)
+            self.assertEqual(env, {"LD_LIBRARY_PATH": "/opt/x"})
+            env = {"LD_LIBRARY_PATH": "/app/_internal", "PATH": "/usr/bin"}
+            linux._host_environment(env)
+            self.assertEqual(env, {"PATH": "/usr/bin"})
+
+    def test_linux_polkit_rule(self):
+        from nimbus.platform import linux
+        rule = linux._polkit_rule("ann", "Nimbus")
+        self.assertIn('action.lookup("interface") == "Nimbus"', rule)
+        self.assertIn('subject.user == "ann"', rule)
+        self.assertIn('"org.freedesktop.resolve1."', rule)
+        if not sys.platform.startswith("linux"):
+            return
+        with tempfile.TemporaryDirectory() as d:   # the root script, with `true` standing in for setcap
+            target = Path(d) / "rules.d" / "49-nimbus.rules"
+            run = lambda tool, text: subprocess.run(["sh", "-c", linux.GRANT_SCRIPT, "sh", tool, linux.CAPS,
+                                                     "/x", text, str(target)]).returncode
+            self.assertEqual(run("true", ""), 0)
+            self.assertFalse(target.exists())
+            self.assertEqual(run("false", rule), 1)
+            self.assertFalse(target.exists())
+            self.assertEqual(run("true", rule), 0)
+            self.assertEqual(target.read_text(), rule)
 
     def test_linux_desktop_entries(self):
         from nimbus.platform import apps_linux, linux
