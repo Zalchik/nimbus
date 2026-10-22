@@ -7,7 +7,7 @@ Add a subscription link, pick a server and connect. Nimbus takes care of the res
 
 **[Download the latest version →](https://github.com/Zalchik/nimbus/releases/latest)**
 
-![Nimbus](docs/screenshot.png)
+![Nimbus](docs/screenshot-en.png)
 
 ## Quick start
 
