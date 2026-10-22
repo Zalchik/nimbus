@@ -84,11 +84,13 @@ LICENSE = "LicenseRef-Nimbus AND MPL-2.0 AND GPL-3.0 AND OFL-1.1"
 # Shell for the maintainer scripts. Before an upgrade or a removal changes the files, every
 # running Nimbus is closed the normal way, as its user: `Nimbus --quit` tells it to quit (it
 # disconnects and puts the proxy settings back) and waits until it has gone. On removal
-# --uninstall also drops its autostart entry. /proc rather than ps: minimal systems lack procps.
+# --uninstall also drops its autostart entry. Found by its executable, not its name: started as
+# `nimbus` (the menu, the command) the process is called that. /proc rather than ps: minimal
+# systems lack procps.
 CLOSE = f"""nimbus_close() {{
     [ -x {OPT}/Nimbus ] || return 0
     for uid in $(for d in /proc/[0-9]*; do
-                     [ "$(cat "$d/comm" 2>/dev/null)" = Nimbus ] && stat -c %u "$d" 2>/dev/null
+                     [ "$(readlink "$d/exe" 2>/dev/null)" = {OPT}/Nimbus ] && stat -c %u "$d" 2>/dev/null
                  done | sort -u); do
         [ "$uid" -eq 0 ] && continue
         user=$(id -nu "$uid" 2>/dev/null) || continue
