@@ -24,10 +24,10 @@ pm() {   # the package manager: install <file> | reinstall <file> | remove
     esac
 }
 
-running() {   # by its executable: started as /usr/bin/nimbus the process is called "nimbus"
+running() {   # by the command it was started as (a container's root can't read another user's exe)
     for d in /proc/[0-9]*; do
-        case "$(readlink "$d/exe" 2>/dev/null)" in
-            /opt/nimbus/Nimbus*) return 0 ;;   # "… (deleted)" once a package replaced it
+        case "$(tr '\0' '\n' < "$d/cmdline" 2>/dev/null | head -n 1)" in
+            /usr/bin/nimbus|/opt/nimbus/Nimbus) return 0 ;;
         esac
     done
     return 1
