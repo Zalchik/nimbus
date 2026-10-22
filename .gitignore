@@ -18,3 +18,5 @@ portable
 *.zip
 nimbus/p.json
 nimbus/xlog.txt
+vendor/xray/.versions
+.venv/

@@ -1,9 +1,12 @@
 """Download the Xray-core and sing-box builds Nimbus ships with into vendor/xray/ (used by CI;
 by hand works too). Versions are pinned here: change them together with testing.
 
-Run: python tools/fetch_cores.py [windows|linux]   (default: this system)
+Run: python tools/fetch_cores.py [windows|linux] [--if-needed]   (default: this system)
+--if-needed: do nothing when vendor/xray already has these versions (make install uses it).
+Linux on ARM (aarch64) gets the arm64 builds; everything else is x86-64.
 """
 import io
+import platform
 import shutil
 import sys
 import tarfile
@@ -22,18 +25,30 @@ def get(url: str) -> bytes:
         return r.read()
 
 
+STAMP = OUT / ".versions"
+
+
 def main() -> None:
-    system = sys.argv[1] if len(sys.argv) > 1 else ("windows" if sys.platform == "win32" else "linux")
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    system = args[0] if args else ("windows" if sys.platform == "win32" else "linux")
     exe = ".exe" if system == "windows" else ""
+    arm = system == "linux" and platform.machine().lower() in ("aarch64", "arm64")
+    stamp = f"{system} {'arm64' if arm else 'amd64'} xray {XRAY} sing-box {SINGBOX}\n"
+    files = [f"xray{exe}", f"sing-box{exe}", "geoip.dat", "geosite.dat", "LICENSE", "LICENSE-sing-box"]
+    if ("--if-needed" in sys.argv and STAMP.exists() and STAMP.read_text() == stamp
+            and all((OUT / f).exists() for f in files)):
+        print("cores are up to date:", stamp.strip())
+        return
     OUT.mkdir(parents=True, exist_ok=True)
 
-    xray = f"https://github.com/XTLS/Xray-core/releases/download/v{XRAY}/Xray-{system}-64.zip"
+    xray = (f"https://github.com/XTLS/Xray-core/releases/download/v{XRAY}/"
+            f"Xray-{system}-{'arm64-v8a' if arm else '64'}.zip")
     with zipfile.ZipFile(io.BytesIO(get(xray))) as z:
         for name, dest in ((f"xray{exe}", f"xray{exe}"), ("geoip.dat", "geoip.dat"),
                            ("geosite.dat", "geosite.dat"), ("LICENSE", "LICENSE")):
             (OUT / dest).write_bytes(z.read(name))
 
-    base = f"sing-box-{SINGBOX}-{system}-amd64"
+    base = f"sing-box-{SINGBOX}-{system}-{'arm64' if arm else 'amd64'}"
     url = f"https://github.com/SagerNet/sing-box/releases/download/v{SINGBOX}/{base}"
     if system == "windows":
         with zipfile.ZipFile(io.BytesIO(get(url + ".zip"))) as z:
@@ -47,6 +62,7 @@ def main() -> None:
                     shutil.copyfileobj(f, out)
     for name in (f"xray{exe}", f"sing-box{exe}"):
         (OUT / name).chmod(0o755)
+    STAMP.write_text(stamp)
     print("done:", ", ".join(sorted(p.name for p in OUT.iterdir())))
 
 

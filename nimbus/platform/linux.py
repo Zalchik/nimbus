@@ -376,13 +376,20 @@ def process_age_ms() -> int:
         return -1
 
 
+# The `nimbus` command `make install` writes (tools/linux_install.py) names itself here. Taken out
+# of the environment so the programs we start (a browser…) don't pass it on.
+LAUNCHER = os.environ.pop("NIMBUS_LAUNCHER", "")
+
+
 def app_command(extra_args: list[str]) -> list[str]:
     """How to start this copy: the AppImage (its own path, not the mount inside /tmp), the
-    frozen executable, or python with main.py."""
+    frozen executable, the installed `nimbus` command, or python with main.py."""
     if os.environ.get("APPIMAGE"):
         return [os.environ["APPIMAGE"], *extra_args]
     if getattr(sys, "frozen", False):
         return [sys.executable, *extra_args]
+    if LAUNCHER:
+        return [LAUNCHER, *extra_args]
     return [sys.executable, os.path.abspath(sys.argv[0]), *extra_args]
 
 

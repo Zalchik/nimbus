@@ -1103,6 +1103,43 @@ class PlatformTests(unittest.TestCase):
             self.assertEqual(run("true", rule), 0)
             self.assertEqual(target.read_text(), rule)
 
+    def test_linux_launcher_command(self):
+        """A `make install` copy restarts and autostarts through its `nimbus` command."""
+        from nimbus.platform import linux
+        with mock.patch.object(linux, "LAUNCHER", "/home/ann/.local/bin/nimbus"), \
+                mock.patch.dict(os.environ, {"APPIMAGE": ""}):
+            self.assertEqual(linux.app_command(["--autostart"]), ["/home/ann/.local/bin/nimbus", "--autostart"])
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "installs on Linux")
+    def test_source_install_files(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "linux_install", Path(__file__).resolve().parent.parent / "tools" / "linux_install.py")
+        li = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(li)
+        layout = li.Layout("/opt/n", "/tmp/stage")
+        self.assertEqual(layout.desktop, Path("/tmp/stage/opt/n/share/applications/nimbus.desktop"))
+        entry = li.desktop_entry(layout)
+        self.assertIn("Exec=/opt/n/bin/nimbus %u\n", entry)
+        self.assertIn("MimeType=x-scheme-handler/nimbus;\n", entry)
+        with tempfile.TemporaryDirectory() as d:
+            # The launcher with a space in its path, a stand-in Python that prints what it got.
+            layout = li.Layout(os.path.join(d, "my prefix"))
+            py = layout.lib / "venv" / "bin" / "python"
+            py.parent.mkdir(parents=True)
+            py.write_text('#!/bin/sh\necho "$NIMBUS_LAUNCHER|$1|$2|$3"\n')
+            py.chmod(0o755)
+            layout.launcher.parent.mkdir(parents=True)
+            layout.launcher.write_text(li.launcher_script(layout))
+            layout.launcher.chmod(0o755)
+            out = subprocess.run([str(layout.launcher), "nimbus://add/x y"], capture_output=True, text=True).stdout
+            self.assertEqual(out.strip(), f"{layout.launcher}|{layout.lib / 'app' / 'main.py'}|nimbus://add/x y|")
+            layout.desktop.parent.mkdir(parents=True)
+            layout.desktop.write_text(li.desktop_entry(layout))
+            self.assertTrue(li.ours(layout.desktop, layout))
+            layout.desktop.write_text(li.linux._desktop_entry("Nimbus", "/tmp/Nimbus.AppImage %u"))
+            self.assertFalse(li.ours(layout.desktop, layout))
+
     def test_linux_desktop_entries(self):
         from nimbus.platform import apps_linux, linux
         with tempfile.TemporaryDirectory() as d:

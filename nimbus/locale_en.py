@@ -632,6 +632,8 @@ TEXTS = {
     "Выпущена {date}": "Released {date}",
     "Открыть страницу релиза: эта копия запущена из исходников":
         "Open the release page: this copy runs from source",
+    "Открыть страницу релиза: скачайте исходный код новой версии и выполните в его папке make install":
+        "Open the release page: download the new version's source code and run make install in its folder",
     "Не удалось скачать обновление: {err}": "Couldn't download the update: {err}",
     "Проверяем файл…": "Checking the file…",
     "Проверяем и распаковываем…": "Checking and unpacking…",

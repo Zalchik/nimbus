@@ -36,6 +36,20 @@ Nimbus checks for new versions at launch and every 6 hours. When one is out, it 
 - The system proxy is set in GNOME and KDE; elsewhere the `HTTP_PROXY` / `HTTPS_PROXY` variables work. The tray icon in GNOME needs the AppIndicator extension.
 - It updates itself like the Windows version: the new AppImage replaces the old one.
 
+**Linux from source: `make install`**
+
+No AppImage and no FUSE: Nimbus is installed for your user in `~/.local`, without root. You get an applications menu entry, the `nimbus` command and the `nimbus://` link handler. Everything else works as in the AppImage, TUN included.
+
+```bash
+git clone https://github.com/Zalchik/nimbus.git && cd nimbus && make install
+```
+
+- It needs Python 3.10+, `make` and the internet: the Xray and sing-box cores come from their GitHub releases, PySide6 and httpx from PyPI (about 250 MB, into a separate environment; the system Python isn't touched). Debian/Ubuntu/Mint also need the `python3-venv` package. Works on x86-64 and ARM64.
+- For every user of the computer: `sudo make install PREFIX=/usr/local`.
+- Updating: get the new source code (`git pull`) and run `make install` again. A running Nimbus is closed; settings stay. After a system upgrade to a new Python version, run `make install` too.
+- Removing: `make uninstall` (with the same `PREFIX`). Settings and subscriptions stay in `~/.config/Nimbus`.
+- For development: `make run` (runs from the source folder), `make test`, `make appimage`.
+
 The data folder holds `settings.json` (settings), `profiles.json` (subscriptions, groups, balancers) and `logs`. Open it from «Settings → App».
 
 ## Features

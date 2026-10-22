@@ -42,6 +42,9 @@ class App:
         self.link = deeplink.from_args(argv[1:])   # nimbus://… the OS started us with
         self.qt = QApplication(argv)
         self.qt.setApplicationName(paths.APP_NAME)
+        if osys.OS_NAME != "Windows":
+            # Wayland docks find the icon through the menu entry (nimbus.desktop) by this name.
+            self.qt.setDesktopFileName(osys.DESKTOP_FILE.removesuffix(".desktop"))
         self.qt.setQuitOnLastWindowClosed(False)
         theme.load_fonts()
         theme.set_palette(Settings.load().theme)

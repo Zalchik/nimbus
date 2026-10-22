@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QPushButton, QT
 from .. import i18n
 from ..i18n import tr
 from .. import paths, updater
+from ..platform import current as osys
 from . import theme
 from .dialogs import Dialog, _chevron
 
@@ -98,7 +99,10 @@ class UpdateDialog(Dialog):
         self.download = QPushButton(tr("Скачать"), objectName="primary")
         self.download.setDefault(True)
         self.download.clicked.connect(self._download)
-        if not self.kind:
+        if not self.kind and getattr(osys, "LAUNCHER", ""):
+            self.download.setToolTip(tr("Открыть страницу релиза: скачайте исходный код новой версии "
+                                        "и выполните в его папке make install"))
+        elif not self.kind:
             self.download.setToolTip(tr("Открыть страницу релиза: эта копия запущена из исходников"))
         for b in (self.never, self.later, self.download):
             row.addWidget(b)
