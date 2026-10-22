@@ -7,6 +7,8 @@ VPN-клиент для Windows и Linux на [Xray-core](https://github.com/XTL
 
 **[Скачать последнюю версию →](https://github.com/Zalchik/nimbus/releases/latest)**
 
+![Nimbus](docs/screenshot.png)
+
 ## Быстрый старт
 
 1. Скачайте Nimbus со [страницы релизов](https://github.com/Zalchik/nimbus/releases/latest).
@@ -19,7 +21,7 @@ VPN-клиент для Windows и Linux на [Xray-core](https://github.com/XTL
 - **Свои балансировщики** из серверов любых подписок: трафик сам идёт через самый быстрый сервер.
 - **Поделиться конфигами:** ссылкой, QR-кодом, Xray JSON или всей подпиской.
 - **Подписки** с трафиком, сроком, объявлениями провайдера и HWID. Полные Xray JSON-конфиги запускаются как есть.
-- **HWID по необходимости:** Nimbus сам решает, отправлять его панели или нет. HWID и имя устройства можно подменить, а User-Agent — переключить на Happ, v2rayN или INCY.
+- **HWID по необходимости:** Nimbus сам решает, отправлять его панели или нет. Может представиться популярным клиентом вроде Happ, если подписка выдаётся только ему (меняет User-Agent, HWID и имя устройства).
 - **Зашифрованные ссылки Happ** (`happ://crypt…/…`, `crypt://…`): Nimbus расшифровывает их сам и добавляет то, что внутри — подписку или конфиги.
 - **Протоколы:** VLESS (Reality, Vision, XHTTP), VMess, Trojan, Shadowsocks, Hysteria2, SOCKS5, WireGuard.
 - **Системный прокси или TUN** для всего трафика, включая игры.

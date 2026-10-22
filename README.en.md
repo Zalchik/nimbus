@@ -7,6 +7,8 @@ Add a subscription link, pick a server and connect. Nimbus takes care of the res
 
 **[Download the latest version →](https://github.com/Zalchik/nimbus/releases/latest)**
 
+![Nimbus](docs/screenshot.png)
+
 ## Quick start
 
 1. Download Nimbus from the [releases page](https://github.com/Zalchik/nimbus/releases/latest).
@@ -19,7 +21,7 @@ Add a subscription link, pick a server and connect. Nimbus takes care of the res
 - **Your own balancers** from servers of any subscriptions: traffic goes through the fastest server by itself.
 - **Sharing configs:** as a link, a QR code, Xray JSON or a whole subscription.
 - **Subscriptions** with traffic, expiry, provider announcements and HWID. Full Xray JSON configs run as they are.
-- **HWID when it's needed:** Nimbus decides by itself whether to send one to a panel. The HWID and the device name can be swapped, and the User-Agent switched to Happ, v2rayN or INCY.
+- **HWID when it's needed:** Nimbus decides by itself whether to send one to a panel. It can pass for a popular client such as Happ when a subscription is only handed out to it (swaps the User-Agent, the HWID and the device name).
 - **Encrypted Happ links** (`happ://crypt…/…`, `crypt://…`): Nimbus decrypts them itself and adds what they hold — a subscription or configs.
 - **Protocols:** VLESS (Reality, Vision, XHTTP), VMess, Trojan, Shadowsocks, Hysteria2, SOCKS5, WireGuard.
 - **System proxy or TUN** for all traffic, games included.
