@@ -242,6 +242,9 @@ TEXTS = {
     "Ваш IP через VPN — нажмите, чтобы скопировать": "Your IP through the VPN — click to copy",
     "Не удалось проверить IP заново — показан последний известный":
         "Couldn't check the IP again — showing the last known one",
+    "Сервисы проверки IP не ответили через VPN. Причина — в логах ядра, строка «IP check failed»":
+        "The IP check services didn't answer through the VPN. The reason is in the core logs, line "
+        "\"IP check failed\"",
     "Весь трафик через VPN": "All traffic through the VPN",
     "Пресеты маршрутизации": "Routing presets",
     "Обновить подписки  (F5)": "Update subscriptions  (F5)",

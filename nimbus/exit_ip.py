@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import bisect
 import ipaddress
+import ssl
 import threading
 import time
 from array import array
@@ -47,9 +48,31 @@ FALLBACKS = [
 HEDGE_AFTER = 1.2   # seconds to give our endpoint before the fallbacks are asked as well
 
 
+_ssl: ssl.SSLContext | None = None
+_ssl_lock = threading.Lock()
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """Mozilla's roots plus the system's. An antivirus that checks HTTPS (Kaspersky, ESET, Avast…)
+    re-signs every site with its own root, which it adds to the system store only: with
+    Mozilla's alone every check failed with CERTIFICATE_VERIFY_FAILED, while browsers worked."""
+    global _ssl
+    with _ssl_lock:
+        if _ssl is None:
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+            try:
+                ctx.load_default_certs()
+            except (ssl.SSLError, OSError):
+                pass
+            _ssl = ctx
+        return _ssl
+
+
 def _client(proxy: str | None, timeout: float) -> httpx.Client:
     # trust_env off: on Windows httpx would otherwise pick the system proxy from the registry.
     return httpx.Client(proxy=proxy, trust_env=False, timeout=httpx.Timeout(timeout, connect=4.0),
+                        verify=_ssl_context(),
                         headers={"User-Agent": "Nimbus", "Connection": "close", "Cache-Control": "no-cache"})
 
 

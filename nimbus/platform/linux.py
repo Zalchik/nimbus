@@ -248,6 +248,11 @@ def parse_routes(text: str, exclude: str) -> tuple[str, bool] | None:
     return (best[1], False) if best else None
 
 
+def flush_dns() -> None:
+    """Nothing to do: fake DNS answers live 1 s, and flushing systemd-resolved's cache would ask
+    for the password."""
+
+
 def ipv6_enabled() -> bool:
     try:
         return Path("/proc/sys/net/ipv6/conf/all/disable_ipv6").read_text().strip() == "0"

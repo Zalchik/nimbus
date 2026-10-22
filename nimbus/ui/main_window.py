@@ -182,6 +182,9 @@ class ExitIpLabel(QWidget):
         tip = tr("Ваш IP через VPN — нажмите, чтобы скопировать") if ip else ""
         if status == "fail" and ip:
             tip = tr("Не удалось проверить IP заново — показан последний известный")
+        elif status == "fail":
+            tip = tr("Сервисы проверки IP не ответили через VPN. Причина — в логах ядра, строка "
+                     "«IP check failed»")
         self.setToolTip(tip)
         self.resizeEvent(None)
         self.update()

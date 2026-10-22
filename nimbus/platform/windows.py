@@ -236,6 +236,14 @@ def ipv6_enabled() -> bool:
     return not (int(value) & 0x10)  # 0x10: IPv6 off on all non-tunnel interfaces (0xFF has it too)
 
 
+def flush_dns() -> None:
+    """Forget cached DNS answers (as ipconfig /flushdns): after TUN, fake addresses lead nowhere."""
+    try:
+        ctypes.windll.dnsapi.DnsFlushResolverCache()
+    except (OSError, AttributeError):
+        pass
+
+
 def single_instance_mutex(name: str):
     """Handle of a named mutex if this is the first instance, else None. Works across elevation:
     an elevated owner makes CreateMutex fail with access denied, which also means "taken"."""

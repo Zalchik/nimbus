@@ -492,7 +492,9 @@ def tun_config(s: Settings, bridge: Bridge, domains: list[str], ru: bool) -> dic
         # Not fc00::/18: the private-range bypass would send fake addresses past the tunnel.
         servers.append({"type": "fakeip", "tag": "dns-fake", "inet4_range": "198.18.0.0/15",
                         "inet6_range": "2001:db8::/32"})
-        dns_rules.append({"query_type": ["A", "AAAA"], "action": "route", "server": "dns-fake"})
+        # TTL 1 s, not sing-box's 600: the system and apps (Steam) cached fake addresses for ten
+        # minutes or more, and they lead nowhere once the tunnel is down.
+        dns_rules.append({"query_type": ["A", "AAAA"], "action": "route", "server": "dns-fake", "rewrite_ttl": 1})
 
     rules: list[dict] = [
         # Xray's own sockets are bound past the tunnel; whatever still lands here (its DNS under

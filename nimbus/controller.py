@@ -177,9 +177,13 @@ class Controller(QObject):
                 self._ip_last = (result[0], result[1] or "")
                 self.exit_ip.emit("ok", *self._ip_last)
 
-        def fail(_):
-            if gen == self._ip_gen and self.state == "connected" and first:
-                self.exit_ip.emit("fail", *self._ip_last)
+        def fail(e):
+            if gen == self._ip_gen and self.state == "connected":
+                line = f"[nimbus] IP check failed: {e}"   # the reason, for a screenshot of the core log
+                self.core.tail.append(line)
+                self.log.emit(line)
+                if first:
+                    self.exit_ip.emit("fail", *self._ip_last)
         self.run_async(lambda: exit_ip.lookup(proxy), done, fail)
 
     def toggle(self) -> None:

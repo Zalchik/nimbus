@@ -226,6 +226,7 @@ class XrayCore:
 
     def stop(self, restore_proxy: bool = True) -> None:
         self._stopping = True
+        tun = self.tun_proc is not None
         # sing-box first: its routes send everything to Xray, which is about to go away.
         for name in ("tun_proc", "proc"):
             proc = getattr(self, name)
@@ -237,6 +238,8 @@ class XrayCore:
                     except subprocess.TimeoutExpired:
                         proc.kill()
                 setattr(self, name, None)
+        if tun:
+            osys.flush_dns()   # fake addresses cached while the tunnel was up
         if restore_proxy:
             self.restore_proxy()
 

@@ -6,6 +6,7 @@ import base64
 import ipaddress
 import json
 import os
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -223,6 +224,19 @@ class FullConfigTests(unittest.TestCase):
 
 
 class ExitIpTests(unittest.TestCase):
+    def test_ip_check_trusts_system_roots_too(self):
+        """An antivirus' HTTPS-checking root sits in the system store only."""
+        import certifi
+
+        from nimbus import exit_ip
+        mozilla = ssl.create_default_context(cafile=certifi.where()).cert_store_stats()["x509_ca"]
+        ctx = exit_ip._ssl_context()
+        self.assertIs(exit_ip._ssl_context(), ctx)
+        if sys.platform == "win32":   # Windows always has system roots; a CI Linux box may not
+            self.assertGreater(ctx.cert_store_stats()["x509_ca"], mozilla)
+        else:
+            self.assertGreaterEqual(ctx.cert_store_stats()["x509_ca"], mozilla)
+
     def _lookup(self, handler):
         import httpx
         from nimbus import exit_ip
@@ -357,6 +371,8 @@ class TunAndInstanceTests(unittest.TestCase):
         dns_out = next(o for o in built.config["outbounds"] if o["tag"] == config_builder.TUN_DNS_OUT)
         self.assertNotIn("streamSettings", dns_out)
         self.assertTrue(built.tun["inbounds"][0]["strict_route"])
+        fake = next(r for r in built.tun["dns"]["rules"] if r.get("server") == "dns-fake")
+        self.assertEqual(fake["rewrite_ttl"], 1)   # cached fake addresses must not outlive the tunnel
         self.assertEqual(xray_ok(built.config), "")
         self.assertIn(singbox_ok(built.tun), ("", "skip"))
 
@@ -1017,7 +1033,7 @@ class PlatformTests(unittest.TestCase):
         "OS_NAME", "POPEN", "POPEN_BACKGROUND", "UI_FONTS", "MONO_FONTS", "TUN_RELAUNCH", "BIND_EGRESS",
         "ENV_VARS", "exe_name", "data_dir", "machine_id",
         "read_proxy", "write_proxy", "enable_proxy", "disable_proxy", "without_dead_local_proxy",
-        "read_env_proxy", "write_env_proxy", "enable_env_proxy", "default_egress", "ipv6_enabled",
+        "read_env_proxy", "write_env_proxy", "enable_env_proxy", "default_egress", "ipv6_enabled", "flush_dns",
         "is_admin", "tun_allowed", "grant_tun", "singbox_path", "relaunch_as_admin",
         "background_thread", "trim_memory", "process_age_ms", "app_command", "relaunch", "single_instance_lock",
         "set_autostart", "autostart_is_this_exe", "register_url_scheme", "unregister_url_scheme",
