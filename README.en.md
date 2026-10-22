@@ -14,6 +14,35 @@ Add a subscription link, pick a server and connect. Nimbus takes care of the res
 3. Double-click a server to connect.
 4. Need the VPN for games or programs that ignore the system proxy? Turn on **TUN** mode.
 
+## Features
+
+- **Your own balancers** from servers of any subscriptions: traffic goes through the fastest server by itself.
+- **Sharing configs:** as a link, a QR code, Xray JSON or a whole subscription.
+- **Subscriptions** with traffic, expiry, provider announcements and HWID. Full Xray JSON configs run as they are.
+- **Encrypted Happ links** (`happ://crypt…/…`, `crypt://…`): Nimbus decrypts them itself and adds what they hold — a subscription or configs.
+- **Protocols:** VLESS (Reality, Vision, XHTTP), VMess, Trojan, Shadowsocks, Hysteria2, SOCKS5, WireGuard.
+- **System proxy or TUN** for all traffic, games included.
+- **Routing:** provider rules, «Russian sites direct», your own presets by program and site.
+- **Kill switch** and DNS and IPv6 leak protection.
+- **Real latency** of servers and your IP with its country.
+- Tray, start with Windows, auto-connect, auto-update, dark and light themes, English and Russian.
+
+## Balancers
+
+- Build your own balancer from servers of **any** subscriptions and groups. Nimbus checks them and sends traffic through the fastest; if a server stops responding, it moves to the next one without reconnecting.
+- **«Stable» mode:** the server changes only if the new one is at least 50 ms and 30% faster. The IP rarely changes and sites don't log you out.
+- **«Fastest» mode:** always the best server.
+- Check interval from 10 seconds to 10 minutes. Tick a whole subscription and its future servers join the balancer too.
+- A notification when a balancer switches servers. The window shows which server the traffic goes through right now.
+- A balancer works like any server: with TUN, presets and latency checks.
+
+## Sharing configs
+
+- A server as a link (`vless://`, `hy2://` and so on) or a QR code. The QR code can be saved as PNG.
+- The full config as Xray JSON: to the clipboard or a file. This keeps everything a link can't hold, such as a balancer.
+- Several servers at once, or a whole subscription as a list of links.
+- The subscription URL as a link or a QR code, to open it on a phone.
+
 ## Installing and updating
 
 Nimbus checks for new versions at launch and every 6 hours. When one is out, it shows what's new, and the «Download» button updates it by itself: it downloads the file (through the VPN if it's on), checks its size and SHA-256, disconnects, replaces the files and starts again. Subscriptions and settings are kept. The check can be turned off in «Settings → App», where the «Check for updates» button also is.
@@ -59,35 +88,6 @@ git clone https://github.com/Zalchik/nimbus.git && cd nimbus && make install
 - For development: `make run` (runs from the source folder), `make test`, `make appimage`.
 
 The data folder holds `settings.json` (settings), `profiles.json` (subscriptions, groups, balancers) and `logs`. Open it from «Settings → App».
-
-## Features
-
-- **Your own balancers** from servers of any subscriptions: traffic goes through the fastest server by itself.
-- **Sharing configs:** as a link, a QR code, Xray JSON or a whole subscription.
-- **Subscriptions** with traffic, expiry, provider announcements and HWID. Full Xray JSON configs run as they are.
-- **Encrypted Happ links** (`happ://crypt…/…`, `crypt://…`): Nimbus decrypts them itself and adds what they hold — a subscription or configs.
-- **Protocols:** VLESS (Reality, Vision, XHTTP), VMess, Trojan, Shadowsocks, Hysteria2, SOCKS5, WireGuard.
-- **System proxy or TUN** for all traffic, games included.
-- **Routing:** provider rules, «Russian sites direct», your own presets by program and site.
-- **Kill switch** and DNS and IPv6 leak protection.
-- **Real latency** of servers and your IP with its country.
-- Tray, start with Windows, auto-connect, auto-update, dark and light themes, English and Russian.
-
-## Balancers
-
-- Build your own balancer from servers of **any** subscriptions and groups. Nimbus checks them and sends traffic through the fastest; if a server stops responding, it moves to the next one without reconnecting.
-- **«Stable» mode:** the server changes only if the new one is at least 50 ms and 30% faster. The IP rarely changes and sites don't log you out.
-- **«Fastest» mode:** always the best server.
-- Check interval from 10 seconds to 10 minutes. Tick a whole subscription and its future servers join the balancer too.
-- A notification when a balancer switches servers. The window shows which server the traffic goes through right now.
-- A balancer works like any server: with TUN, presets and latency checks.
-
-## Sharing configs
-
-- A server as a link (`vless://`, `hy2://` and so on) or a QR code. The QR code can be saved as PNG.
-- The full config as Xray JSON: to the clipboard or a file. This keeps everything a link can't hold, such as a balancer.
-- Several servers at once, or a whole subscription as a list of links.
-- The subscription URL as a link or a QR code, to open it on a phone.
 
 ## Subscriptions and configs
 
