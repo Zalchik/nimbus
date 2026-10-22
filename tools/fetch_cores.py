@@ -11,7 +11,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-XRAY = "26.10.10"
+XRAY = "26.10.21"   # 26.10.10 was withdrawn: it trusted compromised root certificates
 SINGBOX = "1.15.0-alpha.12"
 OUT = Path(__file__).resolve().parent.parent / "vendor" / "xray"
 
