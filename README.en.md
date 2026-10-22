@@ -97,8 +97,9 @@ The data folder holds `settings.json` (settings), `profiles.json` (subscriptions
 - **Full Xray JSON configs** run as they are, with everything the provider set: a balancer, server checks and routing rules.
 - **Links and base64.** Subscriptions of plain links, one per line, are accepted, base64 included.
 - **Subscription card:** the name, traffic used and the limit, days left, the provider's announcement, support and website links.
-- **User-Agent** for all subscriptions or for each one. It decides the format a panel sends the subscription in.
-- **HWID** for panels that limit devices. Modes: «automatically» (only if the subscription doesn't load without it), «always», «never». You can enter your own HWID or generate one to move a device.
+- **User-Agent** for all subscriptions or for each one. It decides the format a panel sends the subscription in. Ready-made presets — **Happ**, **v2rayN** and **INCY**: to a panel, Nimbus introduces itself as that client.
+- **HWID** for panels that limit devices. Nimbus decides by itself whether to send it: «automatically» fetches the subscription without an HWID first, repeats with one if the panel returned no servers, and remembers the answer for each subscription separately. The other modes are «always» and «never», and you can flip it by hand: right-click a subscription → «Send HWID».
+- **A different device.** You can enter your own HWID or generate a random one, and the same goes for the device name. Together with a User-Agent preset this lets Nimbus pass for Happ, v2rayN or INCY — to move a device over from another client, for example.
 - **Your own groups.** Folders for individual configs. Add them as text, as `.json`, `.txt` and `.conf` files, or by dropping files onto the window. Servers move between groups.
 - Subscriptions update through the VPN that is already on, if the provider can't be reached directly.
 
