@@ -40,9 +40,9 @@ SORT_MODES = [("source", tr("Порядок"), tr("Как в подписке у
 PROTO_NAMES = {"vless": "VLESS", "vmess": "VMess", "trojan": "Trojan", "ss": "Shadowsocks",
                "shadowsocks": "Shadowsocks", "hysteria": "Hysteria2", "hysteria2": "Hysteria2", "hy2": "Hysteria2",
                "socks": "SOCKS5", "wireguard": "WireGuard", "wg": "WireGuard", "http": "HTTP"}
-CRYPT_TEXT = (tr("Это зашифрованная ссылка Happ (happ://crypt…): защищённый формат Happ, Nimbus такие ссылки "
-                 "не расшифровывает. Попросите у VPN-провайдера обычную ссылку на подписку — она начинается "
-                 "с https://. Её можно вставить в Nimbus кнопкой «Добавить» или клавишами Ctrl+V."))
+CRYPT_TEXT = (tr("Зашифрованная ссылка Happ не открылась: {reason}. Ссылка могла быть изменена при "
+                 "копировании или зашифрована ключом, которого нет в этой версии Nimbus. Попросите у "
+                 "VPN-провайдера обычную ссылку на подписку — она начинается с https://."))
 ROUTE_TIPS = {
     True: tr("Умная* — маршруты из вашей подписки: какие сайты открываются без VPN, решает VPN-провайдер"),
     False: tr("Весь трафик, включая российские сайты, идёт через VPN"),
@@ -1098,15 +1098,20 @@ class MainWindow(QMainWindow):
             if n:
                 self.toaster.show(tr("Добавлено серверов: {n}", n=n))
 
+    def _crypt_failed(self, reason: str) -> None:
+        inform(self, tr("Зашифрованная ссылка Happ"), CRYPT_TEXT.format(reason=reason))
+
     def open_link(self, text: str, confirm: bool = True) -> bool:
         """A deep link (nimbus://import/…, happ://add/…, v2rayn://install-sub?url=… and the like).
+        An encrypted Happ link (happ://crypt…, crypt://…) opens to what it carries: a subscription
+        or the configs themselves.
         confirm: it came from outside (a browser), so the user sees what gets added first.
         False if `text` isn't a deep link."""
         link = deeplink.parse(text)
         if link is None:
             return False
         if link.kind == "crypt":
-            inform(self, tr("Защищённая ссылка Happ"), CRYPT_TEXT)
+            self._crypt_failed(link.payload)
         elif link.kind == "subscription":
             if not confirm:
                 self.ctl.add_subscription(link.payload)
@@ -1139,7 +1144,21 @@ class MainWindow(QMainWindow):
             self._import(dlg.text())
 
     def _import_chunks(self, chunks: list[str], gid: str) -> int:
-        return sum(self.ctl.import_text(c, self._owner(gid)) for c in chunks)
+        """Each chunk is configs or, as often happens in a chat, a link that carries them."""
+        n = 0
+        for chunk in chunks:
+            link = deeplink.parse(chunk)
+            if link is None:
+                n += self.ctl.import_text(chunk, self._owner(gid))
+            elif link.kind == "subscription":
+                self.ctl.add_subscription(link.payload)
+            elif link.kind == "configs":
+                n += self.ctl.import_text(link.payload, self._owner(gid))
+            elif link.kind == "crypt":
+                self._crypt_failed(link.payload)
+            else:
+                self.toaster.show(tr("В ссылке нет адреса подписки или конфигов"), error=True)
+        return n
 
     def add_configs(self, gid: str = MANUAL, text: str = "") -> None:
         dlg = ConfigsDialog(self, self._groups(), gid, text=text)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QModelIndex, QPersistentModelIndex, QPoint, QRectF, QSize, Qt, QTimer, QUrl
@@ -177,8 +178,9 @@ class AddDialog(Dialog):
 
     def __init__(self, parent=None, url: str = ""):
         super().__init__(parent, tr("Подписка"), tr("Добавить подписку"),
-                         tr("Ссылка на подписку от VPN-провайдера (https://…). Серверы, трафик и срок подписки "
-                            "подтянутся сами и будут обновляться автоматически."), 560)
+                         tr("Ссылка на подписку от VPN-провайдера (https://…), в том числе зашифрованная "
+                            "happ://crypt… или crypt://. Серверы, трафик и срок подписки подтянутся сами и будут "
+                            "обновляться автоматически."), 560)
         self.edit = QLineEdit(placeholderText="https://…")
         self.edit.setFont(theme.font(9, mono=True))
         self.edit.setMinimumHeight(40)
@@ -192,6 +194,16 @@ class AddDialog(Dialog):
 
     def text(self) -> str:
         return self.edit.text().strip()
+
+
+@lru_cache(maxsize=32)
+def _expanded(text: str) -> tuple[str, str]:
+    """(what to read as configs, kind) for a pasted chunk. A Happ encrypted link opens to what it
+    carries; kind is "configs", "subscription", or why it won't open."""
+    link = deeplink.parse(text)
+    if link is None:
+        return text, ""
+    return (link.payload, link.kind) if link.kind in ("configs", "subscription") else ("", link.kind)
 
 
 def _read_config_file(path: Path) -> str:
@@ -221,8 +233,8 @@ class ConfigsDialog(Dialog):
         else:
             super().__init__(parent, tr("Конфиги"), tr("Добавить конфиги"),
                              tr("Ссылки vless://, vmess://, trojan://, ss://, hy2://, socks://, wireguard:// — по одной "
-                                "на строку — или Xray JSON. Можно загрузить файлы .json / .txt или перетащить их "
-                                "в это окно."), 640)
+                                "на строку — или Xray JSON, или зашифрованная ссылка Happ (happ://crypt…, crypt://) с "
+                                "ними внутри. Можно загрузить файлы .json / .txt или перетащить их в это окно."), 640)
         self.new_group = new_group
         self.files: list[tuple[str, str]] = []   # (file name, text)
         self.setAcceptDrops(True)
@@ -249,7 +261,7 @@ class ConfigsDialog(Dialog):
         self.edit.setFont(theme.font(9, mono=True))
         clip = text or QGuiApplication.clipboard().text().strip()
         first = clip.splitlines()[0] if clip else ""
-        if links.is_link(first) or clip[:1] in "[{":
+        if links.is_link(first) or clip[:1] in "[{" or deeplink.is_deep_link(clip):
             self.edit.setPlainText(clip)
             self.edit.selectAll()
         self.edit.textChanged.connect(self._update)
@@ -294,20 +306,37 @@ class ConfigsDialog(Dialog):
     def chunks(self) -> list[str]:
         return [t for t in [self.edit.toPlainText().strip()] + [t for _, t in self.files] if t.strip()]
 
-    def _count(self) -> int:
-        return sum(len(subscription.parse_body(c)[0]) for c in self.chunks())
+    def _counts(self) -> tuple[int, bool, bool]:
+        """(configs found, a subscription link is among the chunks, a Happ link that won't open)."""
+        configs, is_sub, broken = 0, False, False
+        for chunk in self.chunks():
+            text, kind = _expanded(chunk)
+            if kind == "subscription":
+                is_sub = True
+            elif kind == "crypt":
+                broken = True
+            elif text:
+                configs += len(subscription.parse_body(text)[0])
+        return configs, is_sub, broken
 
     def _update(self) -> None:
-        n = self._count()
+        configs, is_sub, broken = self._counts()
         parts = []
         if self.files:
             names = ", ".join(name for name, _ in self.files[:3]) + ("…" if len(self.files) > 3 else "")
             parts.append(tr("Файлы: {names}", names=names))
         if self.chunks():
-            parts.append(tr("найдено конфигов: {n}", n=n) if n else tr("конфиги не распознаны"))
+            if configs:
+                parts.append(tr("найдено конфигов: {n}", n=configs))
+            if is_sub:
+                parts.append(tr("подписка загрузится после добавления"))
+            if broken:
+                parts.append(tr("ссылка Happ не расшифровалась"))
+            if not configs and not is_sub and not broken:
+                parts.append(tr("конфиги не распознаны"))
         self.status.setText(" · ".join(parts).capitalize() if parts else "")
-        self.status.setStyleSheet(f"color: {theme.TEXT if n else theme.MUTED};")
-        self.ok.setEnabled(self.new_group or n > 0)
+        self.status.setStyleSheet(f"color: {theme.TEXT if configs or is_sub else theme.MUTED};")
+        self.ok.setEnabled(self.new_group or configs > 0 or is_sub)
 
     def group_id(self) -> str:
         return self.group.currentData()

@@ -90,7 +90,8 @@ The data folder holds `settings.json` (settings), `profiles.json` (subscriptions
 
 ## Subscriptions and configs
 
-- **«Add to app» links.** A `nimbus://import/<subscription URL>` link opens Nimbus and offers to add the subscription. Nimbus also understands the same kind of links in other formats (`…://add/…`, `…://install-sub?url=…`, `…://install-config?url=…`, `…://import-remote-profile?url=…`), both at launch and when pasted with `Ctrl+V` or «Add». Encrypted links (`…://crypt…`) are not decrypted: ask your provider for the plain `https://…` link.
+- **«Add to app» links.** A `nimbus://import/<subscription URL>` link opens Nimbus and offers to add the subscription. Nimbus also understands the same kind of links in other formats (`…://add/…`, `…://install-sub?url=…`, `…://install-config?url=…`, `…://import-remote-profile?url=…`), both at launch and when pasted with `Ctrl+V` or «Add».
+- **Encrypted Happ links** (`happ://crypt…/…`, and the `crypt://crypt4/…` form): Nimbus decrypts them itself and adds what they hold — a subscription when the link carries its address, configs when it carries the server links. Decryption happens on your computer; the link is never sent anywhere. If this version has no key for the link, Nimbus says so and asks you to get the plain `https://…` link from your provider.
 - **Subscriptions from your VPN provider** by an `https://…` link. Servers are loaded and kept up to date by themselves: at launch and on a timer (every 2 hours by default, or as the provider says).
 - **Full Xray JSON configs** run as they are, with everything the provider set: a balancer, server checks and routing rules.
 - **Links and base64.** Subscriptions of plain links, one per line, are accepted, base64 included.

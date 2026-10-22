@@ -120,10 +120,10 @@ TEXTS = {
     "Закрыть": "Close",
     "Подписка": "Subscription",
     "Добавить подписку": "Add a subscription",
-    "Ссылка на подписку от VPN-провайдера (https://…). Серверы, трафик и срок подписки подтянутся сами и "
-    "будут обновляться автоматически.":
-        "The subscription link from your VPN provider (https://…). Servers, traffic and the expiry date "
-        "are loaded and kept up to date automatically.",
+    "Ссылка на подписку от VPN-провайдера (https://…), в том числе зашифрованная happ://crypt… или crypt://. "
+    "Серверы, трафик и срок подписки подтянутся сами и будут обновляться автоматически.":
+        "The subscription link from your VPN provider (https://…), encrypted happ://crypt… and crypt:// links "
+        "included. Servers, traffic and the expiry date are loaded and kept up to date automatically.",
     "Добавить": "Add",
     'vless://…\nhy2://…\n\nили {"outbounds": [...]}': 'vless://…\nhy2://…\n\nor {"outbounds": [...]}',
     "Загрузить файл…": "Load a file…",
@@ -161,9 +161,11 @@ TEXTS = {
     "Конфиги": "Configs",
     "Добавить конфиги": "Add configs",
     "Ссылки vless://, vmess://, trojan://, ss://, hy2://, socks://, wireguard:// — по одной на строку — или "
-    "Xray JSON. Можно загрузить файлы .json / .txt или перетащить их в это окно.":
-        "vless://, vmess://, trojan://, ss://, hy2://, socks://, wireguard:// links, one per line, or "
-        "Xray JSON. You can load .json / .txt files or drop them onto this window.",
+    "Xray JSON, или зашифрованная ссылка Happ (happ://crypt…, crypt://) с ними внутри. Можно загрузить файлы "
+    ".json / .txt или перетащить их в это окно.":
+        "vless://, vmess://, trojan://, ss://, hy2://, socks://, wireguard:// links, one per line, or Xray JSON, "
+        "or an encrypted Happ link (happ://crypt…, crypt://) carrying them. You can load .json / .txt files or "
+        "drop them onto this window.",
     "Группа": "Group",
     "Создать группу": "Create group",
     "Файлы: {names}": "Files: {names}",
@@ -182,6 +184,8 @@ TEXTS = {
     "Название группы, например «Работа»": "Group name, for example “Work”",
     "найдено конфигов: {n}": "configs found: {n}",
     "конфиги не распознаны": "no configs recognized",
+    "подписка загрузится после добавления": "the subscription loads once added",
+    "ссылка Happ не расшифровалась": "the Happ link didn't decrypt",
     "Проверить задержку": "Check latency",
     "Отметить все": "Tick all",
     "Снять все": "Untick all",
@@ -191,12 +195,13 @@ TEXTS = {
     "Проверить отмеченные ({n})": "Check ticked ({n})",
 
     # -- main window -------------------------------------------------------------------------------
-    "Это зашифрованная ссылка Happ (happ://crypt…): защищённый формат Happ, Nimbus такие ссылки не "
-    "расшифровывает. Попросите у VPN-провайдера обычную ссылку на подписку — она начинается с https://. Её "
-    "можно вставить в Nimbus кнопкой «Добавить» или клавишами Ctrl+V.":
-        "This is an encrypted Happ link (happ://crypt…), a protected Happ format that Nimbus doesn't "
-        "decrypt. Ask your VPN provider for the plain subscription link: it starts with https://. Paste "
-        "it into Nimbus with the “Add” button or Ctrl+V.",
+    "Зашифрованная ссылка Happ не открылась: {reason}. Ссылка могла быть изменена при копировании или "
+    "зашифрована ключом, которого нет в этой версии Nimbus. Попросите у VPN-провайдера обычную ссылку на "
+    "подписку — она начинается с https://.":
+        "This encrypted Happ link didn't open: {reason}. The link may have been altered while copying, or "
+        "encrypted with a key this version of Nimbus doesn't have. Ask your VPN provider for the plain "
+        "subscription link: it starts with https://.",
+    "Зашифрованная ссылка Happ": "Encrypted Happ link",
     "Не подключено": "Not connected",
     "Подключение": "Connecting",
     "Подключено": "Connected",

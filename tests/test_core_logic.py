@@ -964,6 +964,94 @@ class SwapTests(unittest.TestCase):
         p.wait()
 
 
+class HappCryptTests(unittest.TestCase):
+    """Encrypted Happ links open to what they carry. crypt1–4 are RSA blocks of the key table;
+    crypt5 wraps a ChaCha20-Poly1305 key in one and scrambles the bytes."""
+    SUB = "https://panel.example.com/sub/AbCdEf123456"
+    # The layout the public happ-decryptor project publishes, checked against the real link below.
+    CRYPT5 = (
+        "happ://crypt5/fzvdO4bMOfTWNaB3taWRhRaF64soexaE9dm3ZlLK0Rke9Rz3BG1f9gmj"
+        "4tSDpjRSWWdX5G6oaaQK9Gs+fdJPWNXIF08BsaeifWtfTlCvC/nSWDv0ZrofgJXkQ8MlUk63"
+        "CoJkt7RvXAfablYXb/cYWEZJQkDMyMaE5/1KegAbWVWVI60MPqDylUyYoLtOeOOX9amvELec"
+        "OZ4kKz1QVqgE9uCBz3py+3Ghr1iVGKOhFwb98OFP+j0tGvDo/3d609DVq3RwBGXu1ogZ7PTc3"
+        "/A5IlaA3Hff5IlVujozQ3ywmQBsTGd+l3AHJAX1oDbPkRSSwg7Y7hl3AKXKpZsEhMzPbJY8"
+        "UxZ7GmVsxeROLopVx85ACqakzg+ZZwdZslfKgdRzUmL9Mv895HDOHE3tbh6qnDhE9Ew/Epx1"
+        "iBCb2HjorOLDBluH8ztdL9mdUX+turjC4GLN0YR55P3H23A0W5zl0di5YfrI2nUBKxh30lUV"
+        "G9NbqYKlwxgmhxAUZrQ6cnFGF2VuZ9VJLQ3sQ8rqXTtfau8ySbu770Hd6vVEun8aSJm4W4M0"
+        "DagKbORL4A4M6Cuf1v/jj7EWhA9yhhcSuxkc6WUWMGYRraWBM9vSrSbjeT1U69a3n9T56M/T"
+        "OJWf4z8fXrHRnCR1tfzwrjHiOJfZGiKvbAd4k6f+VADYpLdCq+ornEElv7V0sByfwPTgep+Q"
+        "33Qkl67ArHpmbZDcCyWkGz0BoUzGJFe58YiS/oNFVdufbuDnFd1ArAVMztJJJbxlo4Is48+I"
+        "of=ff")
+
+    @staticmethod
+    def _link(text: str, version: int) -> str:
+        """A link as a provider's panel makes one: PKCS#1 v1.5 blocks of the published key.
+        The padding is fixed, so the link is the same every run."""
+        from nimbus import happ, happ_keys
+        key = happ._key(happ_keys.PKCS1_KEYS[happ._RSA_VERSION[version]])
+        body = text.encode()
+        block = b"\x00\x02" + b"\xff" * (key.size - len(body) - 3) + b"\x00" + body
+        cipher = pow(int.from_bytes(block, "big"), 65537, key.n).to_bytes(key.size, "big")
+        payload = base64.urlsafe_b64encode(cipher).decode().rstrip("=")
+        return f"happ://{'crypt' if version == 1 else f'crypt{version}'}/{payload}"
+
+    def test_aead_matches_rfc8439(self):
+        from nimbus import happ
+        key, nonce = bytes(range(0x80, 0xA0)), bytes.fromhex("070000004041424344454647")
+        aad = bytes.fromhex("50515253c0c1c2c3c4c5c6c7")
+        sealed = bytes.fromhex(
+            "d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d6"
+            "3dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b36"
+            "92ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc"
+            "3ff4def08e4b7a9de576d26586cec64b6116" "1ae10b594f09e26a7e902ecbd0600691")
+        self.assertEqual(happ._aead_open(key, nonce, sealed, aad)[:9], b"Ladies an")
+        damaged = sealed[:-1] + bytes([sealed[-1] ^ 1])
+        with self.assertRaises(happ.HappError):
+            happ._aead_open(key, nonce, damaged, aad)
+
+    def test_rsa_links_open(self):
+        from nimbus import happ
+        for version in (1, 2, 3, 4):
+            link = self._link(self.SUB, version)
+            self.assertEqual(happ.unwrap(link), self.SUB, version)
+            # The short form some providers hand out: the action word after crypt:// instead.
+            self.assertEqual(happ.unwrap(link.replace("happ://", "crypt://")), self.SUB, version)
+        self.assertEqual(happ.unwrap(self._link(self._link(self.SUB, 1), 4)), self.SUB)   # link in a link
+
+    def test_crypt5_opens(self):
+        from nimbus import happ
+        self.assertEqual(happ.unwrap(self.CRYPT5), "https://example.com/sub")
+        # A changed byte must not decode: the Poly1305 tag is what makes the link trustworthy.
+        damaged = self.CRYPT5[:220] + ("B" if self.CRYPT5[220] == "A" else "A") + self.CRYPT5[221:]
+        with self.assertRaises(happ.HappError):
+            happ.unwrap(damaged)
+        with self.assertRaises(happ.HappError):
+            happ.unwrap("happ://crypt5/AAAAAAAAAAAA")
+
+    def test_links_that_will_not_open(self):
+        from nimbus import happ
+        for text in ("happ://crypt/abcdef", "happ://crypt4/not-base64!", "happ://crypt9/x", "happ://crypt5/"):
+            with self.assertRaises(happ.HappError, msg=text):
+                happ.unwrap(text)
+
+    def test_deeplink_adds_what_the_link_carries(self):
+        from urllib.parse import quote
+        from nimbus import deeplink
+        link = deeplink.parse(self._link(self.SUB, 4))
+        self.assertEqual((link.kind, link.payload), ("subscription", self.SUB))
+        self.assertEqual(deeplink.parse(self._link(self.SUB, 4).replace("happ://", "crypt://")).kind,
+                         "subscription")
+        self.assertEqual(deeplink.parse(self._link(self._link(self.SUB, 1), 4)).payload, self.SUB)
+        vless = LINKS["vless-reality"]
+        configs = deeplink.parse(self._link(vless, 4))
+        self.assertEqual((configs.kind, configs.payload), ("configs", vless))
+        self.assertEqual(deeplink.parse("happ://add/" + self._link(self.SUB, 4)).kind, "subscription")
+        self.assertEqual(deeplink.parse("happ://crypt/abcdef").kind, "crypt")
+        self.assertEqual(deeplink.parse(self.CRYPT5).kind, "subscription")
+        self.assertTrue(deeplink.is_deep_link(self._link(self.SUB, 4)))
+        self.assertEqual(deeplink.parse(quote(self.SUB, safe="")), None)
+
+
 class DeepLinkTests(unittest.TestCase):
     SUB = "https://panel.example.com/sub/AbC?x=1&y=2"
 
