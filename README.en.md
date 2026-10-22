@@ -65,6 +65,7 @@ The data folder holds `settings.json` (settings), `profiles.json` (subscriptions
 - **Your own balancers** from servers of any subscriptions: traffic goes through the fastest server by itself.
 - **Sharing configs:** as a link, a QR code, Xray JSON or a whole subscription.
 - **Subscriptions** with traffic, expiry, provider announcements and HWID. Full Xray JSON configs run as they are.
+- **Encrypted Happ links** (`happ://crypt…/…`, `crypt://…`): Nimbus decrypts them itself and adds what they hold — a subscription or configs.
 - **Protocols:** VLESS (Reality, Vision, XHTTP), VMess, Trojan, Shadowsocks, Hysteria2, SOCKS5, WireGuard.
 - **System proxy or TUN** for all traffic, games included.
 - **Routing:** provider rules, «Russian sites direct», your own presets by program and site.
