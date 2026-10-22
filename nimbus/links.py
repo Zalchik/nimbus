@@ -109,10 +109,13 @@ def stream_settings(q: dict, default_network: str = "tcp") -> dict:
             t["alpn"] = _csv(unquote(q["alpn"]))
         if q.get("pcs"):
             t["pinnedPeerCertSha256"] = q["pcs"]
+        if q.get("vcn"):
+            t["verifyPeerCertByName"] = q["vcn"]
         if q.get("ech"):
             t["echConfigList"] = q["ech"]
-        if q.get("allowInsecure") == "1" or q.get("insecure") == "1":
-            t["allowInsecure"] = True
+        # insecure=1/allowInsecure=1 is deliberately dropped: Xray 26.2.6+ refuses to start a
+        # config carrying allowInsecure (migrated to pinnedPeerCertSha256 / verifyPeerCertByName),
+        # so passing it through would break the whole server, not just the certificate check.
         s["tlsSettings"] = t
     elif security == "reality":
         r: dict = {"serverName": sni, "fingerprint": fp or "chrome", "publicKey": q.get("pbk", "")}
@@ -203,8 +206,8 @@ def _hy2(link):
     if u.password:
         auth += ":" + unquote(u.password)
     tls: dict = {"serverName": q.get("sni") or host, "alpn": ["h3"]}
-    if q.get("insecure") == "1":
-        tls["allowInsecure"] = True
+    if q.get("vcn"):
+        tls["verifyPeerCertByName"] = q["vcn"]
     if q.get("pinSHA256"):
         tls["pinnedPeerCertSha256"] = q["pinSHA256"]
     stream: dict = {

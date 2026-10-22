@@ -195,6 +195,19 @@ def _apply_mux(ob: dict, s: Settings) -> None:
                      "xudpConcurrency": 16, "xudpProxyUDP443": "reject"}
 
 
+def drop_allow_insecure(node) -> None:
+    """Xray 26.2.6+ refuses to start a config that still carries allowInsecure — it was migrated
+    to pinnedPeerCertSha256 / verifyPeerCertByName. Links never emit it any more, but provider
+    configs and servers saved by older versions still can, so strip it wherever it survives."""
+    if isinstance(node, dict):
+        node.pop("allowInsecure", None)
+        for value in node.values():
+            drop_allow_insecure(value)
+    elif isinstance(node, list):
+        for value in node:
+            drop_allow_insecure(value)
+
+
 def _common(cfg: dict, s: Settings, metrics_port: int, bridge: Bridge | None) -> None:
     # Xray writes a line per connection to stdout unless told not to. Every line goes through
     # our pipe and into the log window, so keep the access log for info/debug only.
@@ -228,6 +241,7 @@ def build(server: Server, s: Settings, metrics_port: int, egress: str = "") -> B
         built = _build_full(server, s, metrics_port, bridge)
     else:
         built = _build_link(server, s, metrics_port, bridge)
+    drop_allow_insecure(built.config)
     if bridge:
         _prepare_for_tun(built.config, s, egress)
         built.tun = tun_config(s, bridge, server_domains(built.config), ru_direct(server, s))
@@ -549,6 +563,9 @@ def provider_routing(server: Server) -> dict | None:
 def proxy_outbounds(server: Server) -> list[dict]:
     """All outbounds of a server, for latency testing (dialerProxy chains included)."""
     if server.is_full_config:
-        return copy.deepcopy(server.config.get("outbounds", []))
-    _, ob = links.parse_link(server.link)
-    return [ob]
+        obs = copy.deepcopy(server.config.get("outbounds", []))
+    else:
+        _, ob = links.parse_link(server.link)
+        obs = [ob]
+    drop_allow_insecure(obs)
+    return obs

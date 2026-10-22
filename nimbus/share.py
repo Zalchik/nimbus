@@ -69,9 +69,8 @@ def _stream_params(ss: dict) -> dict:
         q["fp"] = t.get("fingerprint", "")
         q["alpn"] = ",".join(t.get("alpn") or [])
         q["pcs"] = t.get("pinnedPeerCertSha256", "")
+        q["vcn"] = t.get("verifyPeerCertByName", "")
         q["ech"] = t.get("echConfigList", "")
-        if t.get("allowInsecure"):
-            q["allowInsecure"] = "1"
     elif sec == "reality":
         r = ss.get("realitySettings") or {}
         q["sni"] = r.get("serverName", "")
@@ -121,7 +120,7 @@ def outbound_link(ob: dict, name: str) -> str | None:
         srv = st if st.get("address") else (st.get("servers") or [{}])[0]
         hs = ss.get("hysteriaSettings") or {}
         tls = ss.get("tlsSettings") or {}
-        q = {"sni": tls.get("serverName", ""), "insecure": "1" if tls.get("allowInsecure") else "",
+        q = {"sni": tls.get("serverName", ""), "vcn": tls.get("verifyPeerCertByName", ""),
              "pinSHA256": tls.get("pinnedPeerCertSha256", "")}
         for mask in (ss.get("finalmask") or {}).get("udp") or []:
             if mask.get("type") == "salamander":
@@ -183,6 +182,7 @@ def server_json(server: Server, settings: Settings) -> dict:
     if server.is_full_config:
         cfg = copy.deepcopy(server.config)
         cfg.setdefault("remarks", server.name)
+        config_builder.drop_allow_insecure(cfg)   # Xray 26.2.6+ rejects it
         return cfg
     s = copy.copy(settings)
     s.tunnel_mode = "proxy"

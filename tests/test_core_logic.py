@@ -111,6 +111,39 @@ class LinkTests(unittest.TestCase):
         self.assertEqual(st["realitySettings"]["publicKey"], PBK)
         self.assertEqual(ob["settings"]["flow"], "xtls-rprx-vision")
 
+    def test_insecure_links_still_load_in_xray(self):
+        """Xray 26.2.6+ refuses to start any config carrying allowInsecure, and plenty of free
+        configs ship insecure=1. Parsing must drop the flag instead of poisoning the whole server."""
+        link = ("trojan://happybirthdaydaniel@de-bots4.h1cloud.net:25267?security=tls"
+                "&sni=t.me/FuckTheWall&alpn=http/1.1&insecure=1&fp=firefox&type=tcp"
+                "#Sponsor%20@FuckTheWall")
+        built = config_builder.build(Server(id="x", name="sponsor", link=link), Settings(), 12345)
+        self.assertNotIn("allowInsecure", json.dumps(built.config))
+        self.assertEqual(xray_ok(built.config), "")
+        tls = built.config["outbounds"][0]["streamSettings"]["tlsSettings"]
+        self.assertEqual(tls["serverName"], "t.me/FuckTheWall")
+        self.assertEqual(tls["fingerprint"], "firefox")
+        self.assertEqual(tls["alpn"], ["http/1.1"])
+        self.assertEqual(links.parse_link(link)[1]["settings"]["password"], "happybirthdaydaniel")
+
+    def test_hy2_insecure_also_loads(self):
+        built = config_builder.build(
+            Server(id="h", name="hy2", link="hy2://pass@h.example.com:443?sni=h.example.com&insecure=1"),
+            Settings(), 12345)
+        self.assertNotIn("allowInsecure", json.dumps(built.config))
+        self.assertEqual(xray_ok(built.config), "")
+
+    def test_saved_config_with_allow_insecure_is_cleaned(self):
+        """Servers and subscriptions saved by older versions still carry the removed field."""
+        old = {"outbounds": [{"tag": "proxy", "protocol": "trojan",
+                              "settings": {"address": "a.example", "port": 443, "password": "p"},
+                              "streamSettings": {"network": "tcp", "security": "tls",
+                                                 "tlsSettings": {"serverName": "a.example",
+                                                                 "allowInsecure": True}}}]}
+        built = config_builder.build(Server(id="f", name="old", config=old), Settings(), 12345)
+        self.assertNotIn("allowInsecure", json.dumps(built.config))
+        self.assertEqual(xray_ok(built.config), "")
+
     def test_mux_skipped_with_vision(self):
         built = config_builder.build(Server(id="x", name="r", link=LINKS["vless-reality"]),
                                      Settings(mux=True), 1)
