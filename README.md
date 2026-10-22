@@ -36,6 +36,14 @@ Nimbus сам проверяет новые версии при запуске �
 - Системный прокси настраивается в GNOME и KDE, в других окружениях работают переменные `HTTP_PROXY` / `HTTPS_PROXY`. Для значка в трее в GNOME нужно расширение AppIndicator.
 - Обновляется сам, как и версия для Windows: новый AppImage заменяет старый.
 
+**Linux: пакеты `Nimbus-<версия>-amd64.deb` и `Nimbus-<версия>-x86_64.rpm`**
+
+Та же программа, что в AppImage, но ставится как обычная: в меню приложений, команда `nimbus`, без FUSE.
+
+- Debian, Ubuntu, Mint: `sudo apt install ./Nimbus-*-amd64.deb`. Fedora: `sudo dnf install ./Nimbus-*-x86_64.rpm`. openSUSE: `sudo zypper install --allow-unsigned-rpm ./Nimbus-*-x86_64.rpm`. Или двойным щелчком по файлу.
+- Обновляется сама: Nimbus скачивает новый пакет, проверяет его и устанавливает через менеджер пакетов, система один раз попросит пароль.
+- Удаление: `sudo apt remove nimbus-vpn` или `sudo dnf remove nimbus-vpn`. Запущенный Nimbus перед этим сам отключится и вернёт настройки прокси. Настройки и подписки остаются в `~/.config/Nimbus`.
+
 **Linux из исходников: `make install`**
 
 Без AppImage и FUSE: Nimbus ставится для вашего пользователя в `~/.local`, без root. Появляются пункт в меню приложений, команда `nimbus` и обработчик ссылок `nimbus://`. Всё остальное работает так же, как в AppImage, включая TUN.
@@ -181,7 +189,7 @@ python build.py
 - Перед сборкой положите в `vendor/xray/` файлы `xray.exe`, `geoip.dat` и `geosite.dat` из [релиза Xray-core](https://github.com/XTLS/Xray-core/releases), а также `sing-box.exe` (windows-amd64, версия 1.15 или новее) из [релиза sing-box](https://github.com/SagerNet/sing-box/releases). Wintun встроен в sing-box.
 - Для установщика нужен [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`). Скрипт лежит в `installer/nimbus.iss`. `AppId` в нём не меняйте: по нему установщик находит уже установленный Nimbus.
 - Версия задаётся в `nimbus/paths.py` (`VERSION`).
-- Linux: `python tools/fetch_cores.py linux` и `python build_linux.py` на Linux x86_64 соберут `Nimbus-<версия>-x86_64.AppImage`. GitHub Actions (`.github/workflows/build.yml`) собирает обе версии по тегу `v*` и выкладывает их только как артефакты сборки, релиз не публикует.
+- Linux: `python tools/fetch_cores.py linux` и `python build_linux.py` на Linux x86_64 соберут `Nimbus-<версия>-x86_64.AppImage`, а при наличии `dpkg-deb` и `rpmbuild` ещё `.deb` и `.rpm` (или `make appimage`). GitHub Actions (`.github/workflows/build.yml`) собирает обе версии по тегу `v*` и выкладывает их только как артефакты сборки, релиз не публикует.
 
 ## Лицензии
 

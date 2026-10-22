@@ -25,7 +25,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
             libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libfontconfig1 libdbus-1-3 xvfb xauth file \
-            dbus-x11 dconf-service dconf-cli gsettings-desktop-schemas libglib2.0-bin
+            dbus-x11 dconf-service dconf-cli gsettings-desktop-schemas libglib2.0-bin rpm
       - run: pip install PySide6 httpx pyinstaller Pillow
       - run: python tools/fetch_cores.py linux
       - name: Tests
@@ -51,6 +51,38 @@ jobs:
         with:
           name: nimbus-linux
           path: dist/*/*
+
+  # The .deb and .rpm the linux job built: install, start, upgrade and remove while running.
+  deb:
+    needs: linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: nimbus-linux
+          path: parts
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth desktop-file-utils
+          sudo sh tools/ci_package_check.sh deb "$(ls parts/*/Nimbus-*-amd64.deb)" "$USER"
+
+  rpm:
+    needs: linux
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - run: |
+          dnf install -y xorg-x11-server-Xvfb xauth desktop-file-utils findutils util-linux \
+            mesa-libEGL mesa-libGL libxkbcommon-x11 fontconfig dbus-libs
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: nimbus-linux
+          path: parts
+      - run: |
+          useradd -m tester
+          sh tools/ci_package_check.sh rpm "$(ls parts/*/Nimbus-*-x86_64.rpm)" tester
 
   # make install from the source code with the system's own Python, as users do: an older
   # Ubuntu (Python 3.10), a current one, and Fedora.

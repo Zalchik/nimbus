@@ -7,6 +7,8 @@ files next to its own exe, keeps data/ and the "portable" marker, and starts Nim
 anything can't be moved or copied (a file still locked, a full disk), everything is put back as
 it was and the old version starts with --update-failed.
 
+A .deb / .rpm copy updates through its package manager instead: install_package().
+
 Standard library only, and nimbus.paths is never imported: that would create data folders
 inside the temporary copy."""
 from __future__ import annotations
@@ -132,6 +134,54 @@ def start_detached(exe: Path, args: list[str]) -> None:
         flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     subprocess.Popen([str(exe), *args], cwd=str(exe.parent), close_fds=True, creationflags=flags,
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def package_command(kind: str, package: Path, which: Callable[[str], str | None] = shutil.which) -> list[str]:
+    """The package manager's command (run as root through pkexec) that installs a downloaded
+    .deb / .rpm over the installed one."""
+    if kind == "deb":
+        return [which("env") or "/usr/bin/env", "DEBIAN_FRONTEND=noninteractive",
+                which("apt-get") or "/usr/bin/apt-get", "install", "-y", "--allow-downgrades", str(package)]
+    if which("dnf"):
+        return [which("dnf"), "install", "-y", str(package)]
+    if which("zypper"):
+        return [which("zypper"), "--non-interactive", "install", "--allow-unsigned-rpm", str(package)]
+    return [which("rpm") or "/usr/bin/rpm", "-U", "--replacepkgs", str(package)]
+
+
+def install_package(argv: list[str], run: Callable[[list[str]], int] = subprocess.call,
+                    start: Callable[[Path, list[str]], None] | None = None,
+                    wait: Callable[[int], bool] | None = None) -> int:
+    """`Nimbus --install-package <pid> <deb|rpm> <file> [arguments for the restarted Nimbus…]`:
+    once the old Nimbus has quit, the package manager installs the update (one password
+    prompt), then Nimbus starts again: the new version with --updated, or with --update-failed
+    if the user cancelled or the install failed."""
+    start = start or start_detached
+    wait = wait or wait_for_exit
+    try:
+        pid, kind, package, rest = int(argv[0]), argv[1], Path(argv[2]), list(argv[3:])
+    except (IndexError, ValueError):
+        _log(f"bad arguments: {argv}")
+        return 2
+    exe = Path(sys.executable)
+    _log(f"installing {package}, waiting for {pid}")
+    if not wait(pid):
+        _log("the old Nimbus did not exit")
+        start(exe, ["--update-failed"])
+        return 1
+    cmd = [shutil.which("pkexec") or "/usr/bin/pkexec", *package_command(kind, package)]
+    try:
+        code = run(cmd)
+    except OSError as e:
+        code = -1
+        _log(f"couldn't run {cmd[0]}: {e!r}")
+    if code != 0:
+        _log(f"{' '.join(cmd)} exited with {code}")
+        start(exe, ["--update-failed"])
+        return 1
+    _log("done")
+    start(exe, ["--updated", *rest])
+    return 0
 
 
 def main(argv: list[str]) -> int:

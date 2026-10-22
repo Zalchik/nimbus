@@ -153,7 +153,7 @@ class UpdateDialog(Dialog):
             self.progress.setRange(0, 1000)
             self.progress.setValue(int(done * 1000 / total))
         if total and done >= total:
-            self._set_status(tr("Проверяем файл…") if self.kind == "setup" else tr("Проверяем и распаковываем…"))
+            self._set_status(tr("Проверяем и распаковываем…") if self.kind == "portable" else tr("Проверяем файл…"))
         else:
             self._set_status(tr("{used} из {total}", used=theme.human_bytes(done), total=theme.human_bytes(total))
                              if total
@@ -165,7 +165,11 @@ class UpdateDialog(Dialog):
         self.progress.setRange(0, 0)
         self.later.setEnabled(False)
         self.download.setText(tr("Установка…"))
-        self._set_status(tr("Отключаемся и перезапускаем Nimbus с новой версией…"))
+        if self.kind in ("deb", "rpm"):
+            self._set_status(tr("Отключаемся. Система попросит пароль, чтобы установить обновление, и Nimbus "
+                                "запустится снова…"))
+        else:
+            self._set_status(tr("Отключаемся и перезапускаем Nimbus с новой версией…"))
         self.ctl.install_update(prepared, self.kind, self.quit_app, self._on_install_failed)
 
     def _on_install_failed(self, err) -> None:

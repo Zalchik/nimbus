@@ -36,6 +36,14 @@ Nimbus checks for new versions at launch and every 6 hours. When one is out, it 
 - The system proxy is set in GNOME and KDE; elsewhere the `HTTP_PROXY` / `HTTPS_PROXY` variables work. The tray icon in GNOME needs the AppIndicator extension.
 - It updates itself like the Windows version: the new AppImage replaces the old one.
 
+**Linux: `Nimbus-<version>-amd64.deb` and `Nimbus-<version>-x86_64.rpm` packages**
+
+The same program as the AppImage, installed like any other: in the applications menu, the `nimbus` command, no FUSE.
+
+- Debian, Ubuntu, Mint: `sudo apt install ./Nimbus-*-amd64.deb`. Fedora: `sudo dnf install ./Nimbus-*-x86_64.rpm`. openSUSE: `sudo zypper install --allow-unsigned-rpm ./Nimbus-*-x86_64.rpm`. Or double-click the file.
+- It updates itself: Nimbus downloads the new package, checks it and installs it through the package manager; the system asks for the password once.
+- Removing: `sudo apt remove nimbus-vpn` or `sudo dnf remove nimbus-vpn`. A running Nimbus disconnects and puts the proxy settings back first. Settings and subscriptions stay in `~/.config/Nimbus`.
+
 **Linux from source: `make install`**
 
 No AppImage and no FUSE: Nimbus is installed for your user in `~/.local`, without root. You get an applications menu entry, the `nimbus` command and the `nimbus://` link handler. Everything else works as in the AppImage, TUN included.
@@ -181,7 +189,7 @@ The result appears in `dist/<version>/`: the `Nimbus` folder, `Nimbus-<version>-
 - Before building, put `xray.exe`, `geoip.dat` and `geosite.dat` from the [Xray-core release](https://github.com/XTLS/Xray-core/releases) into `vendor/xray/`, plus `sing-box.exe` (windows-amd64, version 1.15 or newer) from the [sing-box release](https://github.com/SagerNet/sing-box/releases). Wintun is built into sing-box.
 - The installer needs [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`). The script is `installer/nimbus.iss`. Don't change its `AppId`: that's how the installer finds an installed Nimbus.
 - The version is set in `nimbus/paths.py` (`VERSION`).
-- Linux: `python tools/fetch_cores.py linux` and `python build_linux.py` on Linux x86_64 build `Nimbus-<version>-x86_64.AppImage`. GitHub Actions (`.github/workflows/build.yml`) builds both versions on a `v*` tag and keeps them as build artifacts only; it doesn't publish a release.
+- Linux: `python tools/fetch_cores.py linux` and `python build_linux.py` on Linux x86_64 build `Nimbus-<version>-x86_64.AppImage`, plus the `.deb` and `.rpm` when `dpkg-deb` and `rpmbuild` are there (or `make appimage`). GitHub Actions (`.github/workflows/build.yml`) builds both versions on a `v*` tag and keeps them as build artifacts only; it doesn't publish a release.
 
 ## Licenses
 

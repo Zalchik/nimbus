@@ -811,6 +811,19 @@ class UpdaterTests(unittest.TestCase):
         for flag in ("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NIMBUSRESTART=connect"):
             self.assertIn(flag, args)
 
+    def test_package_copies_update_through_their_package(self):
+        from nimbus import updater
+        from nimbus.platform import current as osys
+        self.assertEqual(updater.asset_name("0.3.0", "deb"), "Nimbus-0.3.0-amd64.deb")
+        self.assertEqual(updater.asset_name("0.3.0", "rpm"), "Nimbus-0.3.0-x86_64.rpm")
+        with mock.patch.object(sys, "frozen", True, create=True), mock.patch.object(osys, "OS_NAME", "Linux"), \
+                mock.patch.dict(os.environ, {"APPIMAGE": ""}):
+            for marker, kind in (("deb", "deb"), ("rpm", "rpm"), ("", ""), ("snap", "")):
+                with mock.patch.object(paths, "PACKAGE", marker):
+                    self.assertEqual(updater.install_kind(), kind, marker)
+            with mock.patch.object(paths, "PACKAGE", "deb"), mock.patch.dict(os.environ, {"APPIMAGE": "/a/N.AppImage"}):
+                self.assertEqual(updater.install_kind(), "appimage")
+
     def _download(self, files: dict, release: dict):
         """updater.download against a fake GitHub serving `files` by name."""
         import httpx
@@ -869,6 +882,36 @@ class UpdaterTests(unittest.TestCase):
 
 
 class SwapTests(unittest.TestCase):
+    def test_package_command(self):
+        from nimbus import swap
+        deb = Path("/tmp/Nimbus-update/Nimbus-0.3.0-amd64.deb")
+        rpm = Path("/tmp/Nimbus-update/Nimbus-0.3.0-x86_64.rpm")
+        have = lambda *names: (lambda n: f"/usr/bin/{n}" if n in names else None)
+        self.assertEqual(swap.package_command("deb", deb, have("env", "apt-get")),
+                         ["/usr/bin/env", "DEBIAN_FRONTEND=noninteractive", "/usr/bin/apt-get", "install", "-y",
+                          "--allow-downgrades", str(deb)])
+        self.assertEqual(swap.package_command("rpm", rpm, have("dnf", "zypper", "rpm")),
+                         ["/usr/bin/dnf", "install", "-y", str(rpm)])
+        self.assertEqual(swap.package_command("rpm", rpm, have("zypper", "rpm"))[:3],
+                         ["/usr/bin/zypper", "--non-interactive", "install"])
+        self.assertEqual(swap.package_command("rpm", rpm, have("rpm")), ["/usr/bin/rpm", "-U", "--replacepkgs", str(rpm)])
+
+    def test_install_package_restarts_new_or_old(self):
+        from nimbus import swap
+        for code, flag in ((0, "--updated"), (126, "--update-failed")):   # 126: password prompt cancelled
+            ran, started = [], []
+            rc = swap.install_package(["42", "rpm", "/tmp/N.rpm", "--connect"], run=lambda c: ran.append(c) or code,
+                                      start=lambda exe, args: started.append(args), wait=lambda pid: True)
+            self.assertEqual(rc, 0 if code == 0 else 1)
+            self.assertTrue(ran[0][0].endswith("pkexec"))
+            self.assertEqual(ran[0][-1], str(Path("/tmp/N.rpm")))
+            self.assertEqual(started, [[flag, "--connect"] if code == 0 else [flag]])
+        started = []
+        swap.install_package(["42", "deb", "/tmp/N.deb"], run=lambda c: self.fail("installed anyway"),
+                             start=lambda exe, args: started.append(args), wait=lambda pid: False)
+        self.assertEqual(started, [["--update-failed"]])   # the old Nimbus never quit
+        self.assertEqual(swap.install_package(["x"]), 2)
+
     @staticmethod
     def _tree(root: Path, files: dict) -> None:
         for name, text in files.items():
@@ -1139,6 +1182,29 @@ class PlatformTests(unittest.TestCase):
             self.assertTrue(li.ours(layout.desktop, layout))
             layout.desktop.write_text(li.linux._desktop_entry("Nimbus", "/tmp/Nimbus.AppImage %u"))
             self.assertFalse(li.ours(layout.desktop, layout))
+
+    def test_linux_packages(self):
+        """The .deb / .rpm metadata and maintainer scripts (build_linux.py)."""
+        import build_linux
+        control = build_linux.deb_control(123456)
+        for line in ("Package: nimbus-vpn\n", f"Version: {paths.VERSION}\n", "Installed-Size: 123456\n",
+                     "Architecture: amd64\n"):
+            self.assertIn(line, control)
+        self.assertTrue(control.endswith("\n") and "\n " in control)   # the long description is indented
+        scripts = build_linux.deb_scripts()
+        self.assertIn("nimbus_close --uninstall", scripts["prerm"])
+        self.assertIn("49-nimbus.rules", scripts["postrm"])
+        spec = build_linux.rpm_spec(Path("/b/pkg-rpm"))
+        self.assertIn("AutoReqProv: no", spec)
+        self.assertIn("%global __os_install_post %{nil}", spec)   # stripping breaks PyInstaller's exe
+        self.assertIn('if [ "$1" -ge 2 ]; then\n    nimbus_close\nfi', spec)
+        self.assertIn('if [ "$1" -eq 0 ]; then\n    nimbus_close --uninstall\nfi', spec)
+        self.assertIn("Exec={exec} %u", build_linux.DESKTOP)
+        if sys.platform.startswith("linux"):   # the scripts parse as POSIX sh
+            sections = [spec.split(f"%{s}\n", 1)[1].split("\n%", 1)[0] for s in ("pre", "preun", "post", "postun")]
+            for text in [*scripts.values(), *sections]:
+                r = subprocess.run(["sh", "-n"], input=text, text=True, capture_output=True)
+                self.assertEqual(r.returncode, 0, r.stderr + text)
 
     def test_linux_desktop_entries(self):
         from nimbus.platform import apps_linux, linux

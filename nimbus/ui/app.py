@@ -315,8 +315,9 @@ class App:
 
     @staticmethod
     def _register_links() -> None:
-        """nimbus:// links open this copy (an installed one also gets it from the installer)."""
-        if getattr(sys, "frozen", False):
+        """nimbus:// links open this copy (an installed one also gets it from the installer, a
+        .deb / .rpm from its menu entry)."""
+        if getattr(sys, "frozen", False) and not paths.PACKAGE:
             try:
                 icon = paths.DATA_DIR / "nimbus.png"   # Linux: for the .desktop entry
                 if osys.OS_NAME != "Windows" and not icon.exists():

@@ -47,6 +47,12 @@ else:
 
 # Set up by the installer: its uninstaller sits next to the exe (Inno Setup names it unins000.exe).
 UNINSTALLER = next(iter(sorted(APP_DIR.glob("unins*.exe"))), None) if not PORTABLE else None
+# Installed from a .deb or .rpm (build_linux.py writes "deb" / "rpm" into this file): the package
+# manager installs, updates and removes this copy, and the package brings its menu entry.
+try:
+    PACKAGE = (APP_DIR / "package").read_text().strip() if getattr(sys, "frozen", False) else ""
+except OSError:
+    PACKAGE = ""
 
 XRAY_EXE = CORE_DIR / osys.exe_name("xray")
 SINGBOX_EXE = CORE_DIR / osys.exe_name("sing-box")   # TUN mode only (Linux runs a copy: osys.singbox_path())

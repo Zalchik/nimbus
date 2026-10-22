@@ -632,6 +632,8 @@ TEXTS = {
     "Выпущена {date}": "Released {date}",
     "Открыть страницу релиза: эта копия запущена из исходников":
         "Open the release page: this copy runs from source",
+    "Отключаемся. Система попросит пароль, чтобы установить обновление, и Nimbus запустится снова…":
+        "Disconnecting. The system will ask for the password to install the update, and Nimbus will start again…",
     "Открыть страницу релиза: скачайте исходный код новой версии и выполните в его папке make install":
         "Open the release page: download the new version's source code and run make install in its folder",
     "Не удалось скачать обновление: {err}": "Couldn't download the update: {err}",

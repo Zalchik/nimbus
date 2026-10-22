@@ -109,18 +109,22 @@ def latest(proxy: str | None = None) -> Release | None:
 # -- what to download ---------------------------------------------------------------------------
 def install_kind() -> str:
     """How this copy updates: "setup" (installed: run the new installer), "portable" (a folder of
-    files: swap them), "appimage" (Linux: replace the AppImage), "" (running from source, or a
-    Linux build outside an AppImage: only the release page)."""
+    files: swap them), "appimage" (Linux: replace the AppImage), "deb" / "rpm" (Linux: the package
+    manager installs the new package), "" (running from source, or a Linux build outside an
+    AppImage or a package: only the release page)."""
     if not getattr(sys, "frozen", False):
         return ""
     if osys.OS_NAME != "Windows":
-        return "appimage" if os.environ.get("APPIMAGE") else ""
+        if os.environ.get("APPIMAGE"):
+            return "appimage"
+        return paths.PACKAGE if paths.PACKAGE in ("deb", "rpm") else ""
     return "setup" if paths.UNINSTALLER else "portable"
 
 
 def asset_name(version: str, kind: str) -> str:
     return {"setup": f"Nimbus-{version}-setup.exe", "portable": f"Nimbus-{version}-portable.zip",
-            "appimage": f"Nimbus-{version}-x86_64.AppImage"}[kind]
+            "appimage": f"Nimbus-{version}-x86_64.AppImage", "deb": f"Nimbus-{version}-amd64.deb",
+            "rpm": f"Nimbus-{version}-x86_64.rpm"}[kind]
 
 
 def parse_checksums(text: str) -> dict[str, str]:
@@ -218,6 +222,7 @@ def _start(args: list[str], cwd: Path) -> None:
     if sys.platform == "win32":
         flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     subprocess.Popen(args, cwd=str(cwd), close_fds=True, creationflags=flags,
+                     start_new_session=sys.platform != "win32",   # outlives us whatever happens to our session
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -237,7 +242,7 @@ def prepare(release: Release, kind: str, proxy: str | None = None,
             cancelled: Callable[[], bool] = lambda: False) -> Path:
     """Download and check the update; for a portable copy also unpack it. Returns what
     install() takes: the installer, or the unpacked Nimbus folder."""
-    if kind not in ("setup", "portable", "appimage"):
+    if kind not in ("setup", "portable", "appimage", "deb", "rpm"):
         raise UpdateError(tr("эта копия не обновляется сама"))
     path = download(release, kind, proxy, progress, cancelled)
     return unpack(path) if kind == "portable" else path
@@ -247,6 +252,11 @@ def install(prepared: Path, kind: str, pid: int, connect: bool) -> None:
     """Start whatever replaces this copy once it has quit (the caller quits right after)."""
     if kind == "setup":
         _start(setup_args(prepared, connect), prepared.parent)
+    elif kind in ("deb", "rpm"):
+        # A helper (this same program) waits for us to quit, has the package manager install
+        # the package, and starts the new version; see swap.install_package.
+        _start([sys.executable, "--install-package", str(pid), kind, str(prepared)] +
+               (["--connect"] if connect else []), prepared.parent)
     elif kind == "appimage":
         target = replace_appimage(prepared, Path(os.environ["APPIMAGE"]))
         # --restarted: the new copy waits until this one has let go of the single-instance lock.
